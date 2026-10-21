@@ -1,0 +1,7 @@
+# Test execution report
+test_report.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
