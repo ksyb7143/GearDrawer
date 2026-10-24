@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_Tester - Automatic Test Runner for Adobe Illustrator
- * Version: 0.9.19
+ * Version: 0.9.20
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -4855,14 +4855,16 @@ var PathBuilder = (function () {
                 applyCutStyle(toothPath, cutStrokeWidth, cutColor);
             }
 
-            // Dedicated Root Circle (for trimming, joining, or manual pathfinder operations)
+            // Dedicated Root Circle (Realized/actual root circle considering undercut & trochoid)
+            var actualRootPt = gearData.actualRootRadiusPt || gearData.rootRadiusPt;
+            var actualRootD = gearData.actualRootDiameter || gearData.rootDiameter;
             var rootCircle = gearGroup.pathItems.ellipse(
-                center[1] + gearData.rootRadiusPt,
-                center[0] - gearData.rootRadiusPt,
-                gearData.rootRadiusPt * 2,
-                gearData.rootRadiusPt * 2
+                center[1] + actualRootPt,
+                center[0] - actualRootPt,
+                actualRootPt * 2,
+                actualRootPt * 2
             );
-            rootCircle.name = gearName + "_RootCircle_df" + gearData.rootDiameter.toFixed(1);
+            rootCircle.name = gearName + "_RootCircle_df" + actualRootD.toFixed(2);
             applyCutStyle(rootCircle, cutStrokeWidth, cutColor);
 
             // Shaft Hole & Alignment Pin Holes for Individual Teeth Mode
@@ -4954,6 +4956,7 @@ var PathBuilder = (function () {
             var guideGroup = gearGroup.groupItems.add();
             guideGroup.name = gearName + "_Guides";
 
+            // 1. Pitch Circle
             var pr = gearData.pitchRadiusPt;
             var pitchCircle = guideGroup.pathItems.ellipse(
                 center[1] + pr,
@@ -4963,6 +4966,19 @@ var PathBuilder = (function () {
             );
             pitchCircle.name = "PitchCircle_d" + gearData.pitchDiameter.toFixed(1);
             applyGuideStyle(pitchCircle, guideStrokeWidth, guideColor, [4, 4]);
+
+            // 2. Base Circle (if distinct and applicable)
+            if (gearData.baseRadiusPt && gearData.baseRadiusPt > 0 && Math.abs(gearData.baseRadiusPt - pr) > 0.5) {
+                var br = gearData.baseRadiusPt;
+                var baseCircle = guideGroup.pathItems.ellipse(
+                    center[1] + br,
+                    center[0] - br,
+                    br * 2,
+                    br * 2
+                );
+                baseCircle.name = "BaseCircle_db" + gearData.baseDiameter.toFixed(1);
+                applyGuideStyle(baseCircle, guideStrokeWidth, guideColor, [2, 3]);
+            }
 
             var crossLen = Math.min(pr * 0.4, 15);
             var crossCompound = guideGroup.compoundPathItems.add();
@@ -5979,16 +5995,16 @@ var TesterRunner = (function () {
         }
 
         // --- CASE 1: Recommended Bezier (Top-Left) ---
-        // z1=18, z2=36 -> G1: 18*8=144, G2: 36*8=288
-        testPair("Case1_Recommended", [abLeft + 420, abTop - 250], 2.0, 18, 36, "bezier_recommended", 144, 288);
+        // z1=18, z2=36 -> G1: 18*9=162, G2: 36*9=324 (with tip center anchor)
+        testPair("Case1_Recommended", [abLeft + 420, abTop - 250], 2.0, 18, 36, "bezier_recommended", 162, 324);
 
         // --- CASE 2: Minimal Bezier Config B (Top-Right) ---
-        // z1=18, z2=36 -> G1: 18*6=108, G2: 36*6=216
-        testPair("Case2_Minimal", [abLeft + 1150, abTop - 250], 2.0, 18, 36, "bezier_minimal", 108, 216);
+        // z1=18, z2=36 -> G1: 18*7=126, G2: 36*7=252 (with tip center anchor)
+        testPair("Case2_Minimal", [abLeft + 1150, abTop - 250], 2.0, 18, 36, "bezier_minimal", 126, 252);
 
         // --- CASE 3: Undercut Gears (Bottom-Left) ---
-        // z1=12 (<17.1 undercut), z2=24 -> G1: 12*10=120, G2: 24*8=192
-        testPair("Case3_Undercut_Recommended", [abLeft + 420, abTop - 680], 2.0, 12, 24, "bezier_recommended", 120, 192);
+        // z1=12 (<17.1 undercut), z2=24 -> G1: 12*11=132, G2: 24*9=216 (with tip center anchor)
+        testPair("Case3_Undercut_Recommended", [abLeft + 420, abTop - 680], 2.0, 12, 24, "bezier_recommended", 132, 216);
 
         // --- CASE 4: Single Teeth Test Mode (Bottom-Right) ---
         var gTeeth = InvoluteMath.calculateSpurGear({
@@ -6010,7 +6026,7 @@ var TesterRunner = (function () {
         }
         var teethCount = indGroup ? indGroup.pathItems.length : 0;
         var singleToothPts = (teethCount > 0) ? indGroup.pathItems[0].pathPoints.length : 0;
-        var pass4 = (teethCount === 12 && singleToothPts === 10);
+        var pass4 = (teethCount === 12 && singleToothPts === 11);
 
         report.cases.push({
             name: "Case4_IndividualTeethMode",
@@ -6019,7 +6035,7 @@ var TesterRunner = (function () {
             teethPathCount: teethCount,
             teethExpected: 12,
             singleToothPoints: singleToothPts,
-            singleToothExpected: 10,
+            singleToothExpected: 11,
             passed: pass4
         });
 
