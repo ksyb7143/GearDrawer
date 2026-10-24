@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.2.0
+ * Version: 0.9.17
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -17,29 +17,346 @@
 
 #target illustrator
 
+// Global conversion constants
+var MM_TO_PT = 72.0 / 25.4; // 1 mm = 2.83464567 pt
+var PT_TO_MM = 25.4 / 72.0; // 1 pt = 0.35277778 mm
+
 /**
- * InvoluteMath.jsxinc - GearDrawer Geometry Calculation Engine
- * Version: 0.2.0
+ * CalcLogger.jsxinc - Calculation & Diagnostic Logging Module for GearDrawer
+ * Version: 0.9.0
  * 
- * Provides 100% mathematically pure involute spur gear calculations
- * compliant with JIS B 1701 standards:
- * - Pure involute flank curve (no kerf in math)
- * - True generating trochoid root fillet (rigorous rack cutter envelope)
- * - Dynamic undercut support with exact mathematical intersection
- * - Cubic Bezier anchor optimization (Recommended: 8-10 pts/tooth, Minimal: 6 pts/tooth)
- * - Smooth C1 continuity with true tangent vector fitting
- * - Correct meshing phase alignment (tooth-to-space conjugate action)
- * - Independent segment extraction (tip arc, involutes, trochoid fillets, root circle)
+ * Provides execution trace recording, geometric calculation verification,
+ * and error reporting capabilities.
+ * 
+ * Supports:
+ * - In-memory structured trace collection
+ * - ExtendScript console output ($.writeln)
+ * - Formatted text log generation
+ * - Export to hidden document layer (_GEAR_CALC_LOG)
+ * - Export to text file on disk (Folder.desktop or document folder)
+ * - Interactive ScriptUI Log Viewer dialog for copy-pasting bug reports
+ * 
+ * All UI labels and text are Unicode-escaped for 100% environment compatibility.
  */
 
-var InvoluteMath = (function () {
-    var MM_TO_PT = 72 / 25.4; // 1 mm = 2.83464567 pt
+var CalcLogger = (function () {
+    var _enabled = false;
+    var _entries = [];
+    var _startTime = null;
+    var _version = "0.9.0";
+
+    function setVersion(ver) {
+        _version = ver || "0.9.0";
+    }
+
+    function init(enabled) {
+        _enabled = !!enabled;
+        _entries = [];
+        _startTime = new Date();
+        log("INIT", "GearDrawer Calculation Logger initialized (v" + _version + ")");
+    }
+
+    function isEnabled() {
+        return _enabled;
+    }
+
+    function setEnabled(flag) {
+        _enabled = !!flag;
+    }
+
+    function clear() {
+        _entries = [];
+        _startTime = new Date();
+    }
+
+    function serializeData(data) {
+        if (data === null || data === undefined) return "";
+        if (typeof data === "string" || typeof data === "number" || typeof data === "boolean") {
+            return String(data);
+        }
+        try {
+            if (typeof JSON !== "undefined" && JSON && typeof JSON.stringify === "function") {
+                return JSON.stringify(data);
+            }
+        } catch (e) {}
+
+        // Fallback serializer for ES3 / ExtendScript
+        try {
+            if (data instanceof Array) {
+                var arrStr = [];
+                for (var i = 0; i < data.length; i++) {
+                    arrStr.push(serializeData(data[i]));
+                }
+                return "[" + arrStr.join(", ") + "]";
+            }
+            if (typeof data === "object") {
+                var pairs = [];
+                for (var k in data) {
+                    if (data.hasOwnProperty(k)) {
+                        pairs.push(k + ":" + serializeData(data[k]));
+                    }
+                }
+                return "{" + pairs.join(", ") + "}";
+            }
+        } catch (e2) {}
+        return String(data);
+    }
+
+    function log(category, message, data) {
+        // Always record entries so emergency crash logs can be retrieved even if user didn't check option
+        var timestamp = new Date();
+        var elapsedMs = _startTime ? (timestamp.getTime() - _startTime.getTime()) : 0;
+        var entry = {
+            elapsedMs: elapsedMs,
+            category: category || "INFO",
+            message: message,
+            dataStr: (data !== undefined) ? serializeData(data) : null
+        };
+        _entries.push(entry);
+
+        // Mirror to ExtendScript debug console if available
+        try {
+            if (typeof $ !== "undefined" && typeof $.writeln === "function") {
+                var line = "[" + category + " +" + elapsedMs + "ms] " + message;
+                if (entry.dataStr) line += " | " + entry.dataStr;
+                $.writeln(line);
+            }
+        } catch (e) {}
+    }
+
+    function warn(category, message, data) {
+        log("WARN:" + category, message, data);
+    }
+
+    function error(category, message, err) {
+        var detail = "";
+        if (err) {
+            detail = (err.message || String(err));
+            if (err.line !== undefined) detail += " (Line " + err.line + ")";
+            if (err.fileName) detail += " in " + err.fileName;
+        }
+        log("ERROR:" + category, message + (detail ? " -> " + detail : ""), err);
+    }
+
+    function pad(n, width) {
+        var s = String(n);
+        while (s.length < width) s = " " + s;
+        return s;
+    }
+
+    function padRight(s, width) {
+        var str = String(s);
+        while (str.length < width) str = str + " ";
+        return str;
+    }
+
+    function dumpText() {
+        var lines = [];
+        lines.push("================================================================================");
+        lines.push(" GearDrawer Calculation & Diagnostic Execution Trace");
+        lines.push(" Version   : " + _version);
+        lines.push(" Timestamp : " + (_startTime ? _startTime.toString() : new Date().toString()));
+        try {
+            if (typeof app !== "undefined" && app.name) {
+                lines.push(" Host App  : " + app.name + " " + app.version);
+            }
+            if (typeof $ !== "undefined" && typeof $.os !== "undefined") {
+                lines.push(" OS        : " + $.os);
+            }
+            if (typeof app !== "undefined" && app.documents && app.documents.length > 0) {
+                var doc = app.activeDocument;
+                lines.push(" Document  : " + doc.name + " (" + (doc.documentColorSpace || "RGB") + ")");
+            }
+        } catch (e) {}
+        lines.push("================================================================================");
+        lines.push("");
+
+        for (var i = 0; i < _entries.length; i++) {
+            var e = _entries[i];
+            var prefix = "[" + pad(e.elapsedMs, 5) + "ms] [" + padRight(e.category, 20) + "] ";
+            lines.push(prefix + e.message);
+            if (e.dataStr) {
+                lines.push("            DATA: " + e.dataStr);
+            }
+        }
+        lines.push("");
+        lines.push("================================================================================");
+        lines.push(" End of Log (" + _entries.length + " events recorded)");
+        lines.push("================================================================================");
+        return lines.join("\n");
+    }
+
+    function exportToFile(targetFolder) {
+        try {
+            if (typeof Folder === "undefined" || typeof File === "undefined") {
+                return null;
+            }
+
+            var fObj = null;
+            if (targetFolder) {
+                if (typeof targetFolder === "string") {
+                    fObj = new Folder(targetFolder);
+                } else if (targetFolder instanceof Folder) {
+                    fObj = targetFolder;
+                }
+            }
+            if (!fObj || !fObj.exists) {
+                try {
+                    if (fObj && typeof fObj.create === "function") {
+                        fObj.create();
+                    }
+                } catch (eF) {}
+            }
+            if (!fObj || !fObj.exists) {
+                try {
+                    if (typeof app !== "undefined" && app.documents && app.documents.length > 0 && app.activeDocument.saved) {
+                        fObj = app.activeDocument.path;
+                    }
+                } catch (eDoc) {}
+            }
+            if (!fObj || !fObj.exists) {
+                fObj = Folder.desktop;
+            }
+
+            var now = new Date();
+            var y = now.getFullYear();
+            var m = ("0" + (now.getMonth() + 1)).slice(-2);
+            var d = ("0" + now.getDate()).slice(-2);
+            var h = ("0" + now.getHours()).slice(-2);
+            var min = ("0" + now.getMinutes()).slice(-2);
+            var s = ("0" + now.getSeconds()).slice(-2);
+            var filename = "GearDrawer_Log_" + y + m + d + "_" + h + min + s + ".txt";
+
+            var file = new File(fObj.fsName + "/" + filename);
+            file.encoding = "UTF-8";
+            if (file.open("w")) {
+                file.write(dumpText());
+                file.close();
+                return file.fsName;
+            }
+        } catch (err) {}
+        return null;
+    }
+
+    function showLogWindow(title, headerMsg) {
+        try {
+            if (typeof Window === "undefined") return;
+
+            var win = new Window("dialog", title || "\u8a08\u7b97\u904e\u7a0b\u30ed\u30b0 (Calculation Log)");
+            win.orientation = "column";
+            win.alignChildren = ["fill", "top"];
+            win.spacing = 8;
+            win.margins = 10;
+
+            if (headerMsg) {
+                var lblHeader = win.add("statictext", undefined, headerMsg, { multiline: true });
+                lblHeader.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.8, 0.2, 0.2, 1], 1);
+            }
+
+            var etLog = win.add("edittext", undefined, dumpText(), { multiline: true, scrolling: true });
+            etLog.preferredSize = [600, 360];
+
+            var grpActions = win.add("group");
+            grpActions.orientation = "row";
+            grpActions.alignChildren = ["right", "center"];
+
+            var btnSave = grpActions.add("button", undefined, "\u30c6\u30ad\u30b9\u30c8\u30d5\u30a1\u30a4\u30eb\u306b\u4fdd\u5b58...");
+            var btnClose = grpActions.add("button", undefined, "\u9589\u3058\u308b", { name: "ok" });
+
+            btnSave.onClick = function () {
+                var selectedFolder = Folder.selectDialog("\u30ed\u30b0\u30d5\u30a1\u30a4\u30eb\u306e\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u3092\u9078\u629e");
+                var path = exportToFile(selectedFolder);
+                if (path) {
+                    alert("\u8a08\u7b97\u30ed\u30b0\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f:\n" + path);
+                } else {
+                    alert("\u30ed\u30b0\u30d5\u30a1\u30a4\u30eb\u306e\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002");
+                }
+            };
+
+            btnClose.onClick = function () {
+                win.close();
+            };
+
+            win.show();
+        } catch (e) {}
+    }
+
+    return {
+        init: init,
+        isEnabled: isEnabled,
+        setEnabled: setEnabled,
+        clear: clear,
+        setVersion: setVersion,
+        log: log,
+        warn: warn,
+        error: error,
+        getEntries: function () { return _entries; },
+        dumpText: dumpText,
+        exportToFile: exportToFile,
+        showLogWindow: showLogWindow
+    };
+})();
+
+/**
+ * InvoluteMath.jsxinc - Complete Involute Mechanism Math Engine (Modular Facade)
+ * Version: 0.9.16
+ * Part of GearDrawer Architecture (JIS B 1701 / JIS B 0003)
+ * 
+ * Aggregates:
+ * - InvoluteCore.jsxinc (Pure Involute & Trochoid Geometry, Bezier Optimization)
+ * - MechanismSolvers.jsxinc (Planetary & Paradoxical Inverse Search Solvers)
+ * - TopologySolver.jsxinc (Circle Object Geometry & Multi-layer Topology Engine)
+ * - TrainTreeResolver.jsxinc (Branched Gear Train Kinematics & Node Expansion)
+ */
+
+/**
+ * InvoluteCore.jsxinc - Pure Involute Gear Geometry & Curve Fitting
+ * Part of GearDrawer Architecture (JIS B 1701 / JIS B 0003)
+ */
+
+var InvoluteMath = InvoluteMath || {};
+
+(function (exports) {
+// Global conversion constants & helpers
+var MM_TO_PT = 72.0 / 25.4;
+var PT_TO_MM = 25.4 / 72.0;
+
+function logTrace(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.log(category, msg, data);
+    }
+}
+
+function logWarn(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.warn(category, msg, data);
+    }
+}
 
     /**
      * Involute function: inv(alpha) = tan(alpha) - alpha
      */
     function inv(alphaRad) {
         return Math.tan(alphaRad) - alphaRad;
+    }
+
+    /**
+     * Inverse involute function: solve tan(alpha) - alpha = val for alpha (rad)
+     * Uses Newton-Raphson method with cubic root initial estimate.
+     */
+    function invInv(val) {
+        if (val <= 0) return 0.0;
+        var a = Math.pow(3.0 * val, 1.0 / 3.0);
+        for (var iter = 0; iter < 20; iter++) {
+            var t = Math.tan(a);
+            var f = t - a - val;
+            var f_prime = t * t;
+            if (Math.abs(f_prime) < 1e-12) break;
+            var da = f / f_prime;
+            a -= da;
+            if (Math.abs(da) < 1e-12) break;
+        }
+        return a;
     }
 
     /**
@@ -51,12 +368,328 @@ var InvoluteMath = (function () {
         return 2.0 / (sinA * sinA);
     }
 
+    // === SHAFT HOLE & KEYWAY GEOMETRY (JIS B 1301 / D-CUT) ===
+    var JIS_B_1301_TABLE = [
+        { dMax: 6,   b2: 1.5, t2: 0.8 },
+        { dMax: 8,   b2: 2.0, t2: 1.0 },
+        { dMax: 10,  b2: 3.0, t2: 1.4 },
+        { dMax: 12,  b2: 4.0, t2: 1.8 },
+        { dMax: 17,  b2: 5.0, t2: 2.3 },
+        { dMax: 22,  b2: 6.0, t2: 2.8 },
+        { dMax: 30,  b2: 8.0, t2: 3.3 },
+        { dMax: 38,  b2: 10.0, t2: 3.3 },
+        { dMax: 44,  b2: 12.0, t2: 3.3 },
+        { dMax: 50,  b2: 14.0, t2: 3.8 },
+        { dMax: 58,  b2: 16.0, t2: 4.3 },
+        { dMax: 65,  b2: 18.0, t2: 4.4 },
+        { dMax: 75,  b2: 20.0, t2: 4.9 },
+        { dMax: 85,  b2: 22.0, t2: 5.4 }
+    ];
+
+    function getJISKeywayDimensions(shaftDiameter) {
+        var d = parseFloat(shaftDiameter) || 0;
+        if (d <= 0) return { b2: 0, t2: 0 };
+        for (var i = 0; i < JIS_B_1301_TABLE.length; i++) {
+            if (d <= JIS_B_1301_TABLE[i].dMax) {
+                return { b2: JIS_B_1301_TABLE[i].b2, t2: JIS_B_1301_TABLE[i].t2 };
+            }
+        }
+        return { b2: Math.round(d * 0.25 * 10) / 10, t2: Math.round(d * 0.06 * 10) / 10 };
+    }
+
+    function getDCutDepth(shaftDiameter, customDepth) {
+        if (customDepth !== undefined && !isNaN(customDepth) && customDepth > 0) {
+            return customDepth;
+        }
+        var d = parseFloat(shaftDiameter) || 0;
+        if (d <= 0) return 0;
+        var h = Math.round(d * 0.10 * 10) / 10;
+        if (h < 0.5) h = 0.5;
+        if (h >= d * 0.45) h = d * 0.45;
+        return h;
+    }
+
+    function normalizeShaftType(typeStr) {
+        if (!typeStr) return "ROUND";
+        var s = String(typeStr).toLowerCase();
+        if (s.indexOf("d-cut") !== -1 || s.indexOf("dカット") !== -1 || s.indexOf("dcut") !== -1) {
+            return "DCUT";
+        }
+        if (s.indexOf("keyway") !== -1 || s.indexOf("キー溝") !== -1 || s.indexOf("key") !== -1) {
+            return "KEYWAY";
+        }
+        if (s.indexOf("none") !== -1 || s.indexOf("なし") !== -1) {
+            return "NONE";
+        }
+        return "ROUND";
+    }
+
+    function createArcBezierNodes(R, thetaStart, thetaEnd) {
+        var delta = thetaEnd - thetaStart;
+        while (delta < 0) delta += 2 * Math.PI;
+        if (delta < 1e-6) return [];
+
+        var nSeg = Math.ceil(delta / (Math.PI / 2.0));
+        var dTheta = delta / nSeg;
+        var k = (4.0 / 3.0) * Math.tan(dTheta / 4.0);
+
+        var nodes = [];
+        for (var i = 0; i <= nSeg; i++) {
+            var th = thetaStart + i * dTheta;
+            var cosT = Math.cos(th);
+            var sinT = Math.sin(th);
+            var ax = R * cosT;
+            var ay = R * sinT;
+
+            var inX = ax + R * k * sinT;
+            var inY = ay - R * k * cosT;
+            var outX = ax - R * k * sinT;
+            var outY = ay + R * k * cosT;
+
+            nodes.push({
+                anchor: [Math.round(ax * 10000) / 10000, Math.round(ay * 10000) / 10000],
+                leftDirection: [Math.round(inX * 10000) / 10000, Math.round(inY * 10000) / 10000],
+                rightDirection: [Math.round(outX * 10000) / 10000, Math.round(outY * 10000) / 10000],
+                theta: th
+            });
+        }
+        return nodes;
+    }
+
+    function calculateShaftHoleGeometry(shaftDiameter, shaftTypeStr, options) {
+        options = options || {};
+        var d = parseFloat(shaftDiameter) || 0;
+        var type = normalizeShaftType(shaftTypeStr);
+
+        if (d <= 0 || type === "NONE") {
+            return {
+                hasHole: false,
+                shaftDiameter: 0,
+                shaftType: "NONE",
+                nodes: [],
+                points: [],
+                bounds: { width: 0, height: 0 }
+            };
+        }
+
+        var R = d / 2.0;
+        var nodes = [];
+        var points = [];
+
+        if (type === "ROUND") {
+            var k = (4.0 / 3.0) * (Math.SQRT2 - 1.0) * R;
+            nodes.push({
+                anchor: [R, 0],
+                leftDirection: [R, -k],
+                rightDirection: [R, k]
+            });
+            nodes.push({
+                anchor: [0, R],
+                leftDirection: [k, R],
+                rightDirection: [-k, R]
+            });
+            nodes.push({
+                anchor: [-R, 0],
+                leftDirection: [-R, k],
+                rightDirection: [-R, -k]
+            });
+            nodes.push({
+                anchor: [0, -R],
+                leftDirection: [-k, -R],
+                rightDirection: [k, -R]
+            });
+
+            for (var p = 0; p < 36; p++) {
+                var th = (p / 36.0) * 2 * Math.PI;
+                points.push([
+                    Math.round(R * Math.cos(th) * 10000) / 10000,
+                    Math.round(R * Math.sin(th) * 10000) / 10000
+                ]);
+            }
+
+            return {
+                hasHole: true,
+                shaftDiameter: d,
+                shaftType: "ROUND",
+                nodes: nodes,
+                points: points,
+                bounds: { width: d, height: d }
+            };
+        }
+
+        if (type === "DCUT") {
+            var h = getDCutDepth(d, options.dCutDepth);
+            var yc = R - h;
+            var xc = Math.sqrt(Math.max(0, R * R - yc * yc));
+
+            var th1 = Math.atan2(yc, xc);
+            var th2 = Math.PI - th1;
+
+            var arcNodes = createArcBezierNodes(R, th2, 2 * Math.PI + th1);
+
+            var leftCornerNode = {
+                anchor: [-xc, yc],
+                leftDirection: [-xc, yc],
+                rightDirection: arcNodes[0].rightDirection
+            };
+
+            var rightCornerNode = {
+                anchor: [xc, yc],
+                leftDirection: arcNodes[arcNodes.length - 1].leftDirection,
+                rightDirection: [xc, yc]
+            };
+
+            nodes.push(rightCornerNode);
+            nodes.push(leftCornerNode);
+
+            for (var a = 1; a < arcNodes.length - 1; a++) {
+                nodes.push({
+                    anchor: arcNodes[a].anchor,
+                    leftDirection: arcNodes[a].leftDirection,
+                    rightDirection: arcNodes[a].rightDirection
+                });
+            }
+
+            points.push([Math.round(xc * 10000) / 10000, Math.round(yc * 10000) / 10000]);
+            points.push([Math.round(-xc * 10000) / 10000, Math.round(yc * 10000) / 10000]);
+            var nArcPts = 32;
+            var arcSpan = (2 * Math.PI + th1) - th2;
+            for (var ap = 1; ap < nArcPts; ap++) {
+                var ath = th2 + (ap / nArcPts) * arcSpan;
+                points.push([
+                    Math.round(R * Math.cos(ath) * 10000) / 10000,
+                    Math.round(R * Math.sin(ath) * 10000) / 10000
+                ]);
+            }
+
+            return {
+                hasHole: true,
+                shaftDiameter: d,
+                shaftType: "DCUT",
+                dCutDepth: h,
+                flatThickness: d - h,
+                nodes: nodes,
+                points: points,
+                bounds: { width: d, height: d - h / 2.0 }
+            };
+        }
+
+        if (type === "KEYWAY") {
+            var jis = getJISKeywayDimensions(d);
+            var b2 = options.keyWidth || jis.b2;
+            var t2 = options.keyDepth || jis.t2;
+
+            var halfB = b2 / 2.0;
+            if (halfB >= R) halfB = R * 0.9;
+            var yk = Math.sqrt(Math.max(0, R * R - halfB * halfB));
+            var yTop = R + t2;
+
+            var th1 = Math.atan2(yk, halfB);
+            var th4 = Math.PI - Math.atan2(yk, halfB);
+
+            var arcNodes = createArcBezierNodes(R, th4, 2 * Math.PI + th1);
+
+            var k1Node = {
+                anchor: [halfB, yk],
+                leftDirection: arcNodes[arcNodes.length - 1].leftDirection,
+                rightDirection: [halfB, yk]
+            };
+            var k2Node = {
+                anchor: [halfB, yTop],
+                leftDirection: [halfB, yTop],
+                rightDirection: [halfB, yTop]
+            };
+            var k3Node = {
+                anchor: [-halfB, yTop],
+                leftDirection: [-halfB, yTop],
+                rightDirection: [-halfB, yTop]
+            };
+            var k4Node = {
+                anchor: [-halfB, yk],
+                leftDirection: [-halfB, yk],
+                rightDirection: arcNodes[0].rightDirection
+            };
+
+            nodes.push(k1Node);
+            nodes.push(k2Node);
+            nodes.push(k3Node);
+            nodes.push(k4Node);
+
+            for (var ka = 1; ka < arcNodes.length - 1; ka++) {
+                nodes.push({
+                    anchor: arcNodes[ka].anchor,
+                    leftDirection: arcNodes[ka].leftDirection,
+                    rightDirection: arcNodes[ka].rightDirection
+                });
+            }
+
+            points.push([Math.round(halfB * 10000) / 10000, Math.round(yk * 10000) / 10000]);
+            points.push([Math.round(halfB * 10000) / 10000, Math.round(yTop * 10000) / 10000]);
+            points.push([Math.round(-halfB * 10000) / 10000, Math.round(yTop * 10000) / 10000]);
+            points.push([Math.round(-halfB * 10000) / 10000, Math.round(yk * 10000) / 10000]);
+
+            var nArcPts = 32;
+            var arcSpan = (2 * Math.PI + th1) - th4;
+            for (var ap = 1; ap < nArcPts; ap++) {
+                var ath = th4 + (ap / nArcPts) * arcSpan;
+                points.push([
+                    Math.round(R * Math.cos(ath) * 10000) / 10000,
+                    Math.round(R * Math.sin(ath) * 10000) / 10000
+                ]);
+            }
+
+            return {
+                hasHole: true,
+                shaftDiameter: d,
+                shaftType: "KEYWAY",
+                b2: b2,
+                t2: t2,
+                nodes: nodes,
+                points: points,
+                bounds: { width: d, height: R + yTop }
+            };
+        }
+
+        return {
+            hasHole: false,
+            shaftDiameter: 0,
+            shaftType: "NONE",
+            nodes: [],
+            points: []
+        };
+    }
+
+    function calculateAlignmentPinHoles(rfMm, shaftDiameterMm, options) {
+        options = options || {};
+        var pinCount = options.pinCount || 2;
+        var pinDia = options.pinDiameter || 2.0;
+        var rShaft = (shaftDiameterMm || 0) / 2.0;
+        var rPitch = options.pinPitchRadius || ((rShaft + rfMm) / 2.0);
+        var marginInner = (rPitch - pinDia / 2.0) - rShaft;
+        var marginOuter = rfMm - (rPitch + pinDia / 2.0);
+        if (marginInner < 0.5 || marginOuter < 0.5) {
+            return { valid: false, reason: "Insufficient margin for pin holes" };
+        }
+        var holes = [];
+        var baseAngle = options.baseAngleRad || 0;
+        for (var i = 0; i < pinCount; i++) {
+            var ang = baseAngle + (i * 2 * Math.PI / pinCount);
+            holes.push({
+                center: [Math.round(rPitch * Math.cos(ang) * 10000) / 10000, Math.round(rPitch * Math.sin(ang) * 10000) / 10000],
+                diameter: pinDia,
+                radius: pinDia / 2.0
+            });
+        }
+        return { valid: true, holes: holes, pitchRadius: rPitch, diameter: pinDia };
+    }
+
     /**
      * Calculate tooth profile coordinates and Bezier nodes for a spur gear.
      * 
      * @param {Object} params
      *   - m: Module (mm)
      *   - z: Number of teeth
+     *   - x: Profile shift coefficient (default 0.0)
      *   - alphaDeg: Pressure angle (deg, usually 20)
      *   - backlash: Circumferential backlash (mm, default 0.0)
      *   - shaftDiameter: Shaft hole diameter (mm, 0 for none)
@@ -67,6 +700,7 @@ var InvoluteMath = (function () {
     function calculateSpurGear(params) {
         var m = params.m;
         var z = params.z;
+        var x = params.x || 0.0;
         var alphaDeg = params.alphaDeg || 20;
         var alpha = alphaDeg * (Math.PI / 180.0);
         var backlash = params.backlash || 0.0;
@@ -75,19 +709,29 @@ var InvoluteMath = (function () {
         var rcFactor = params.rcFactor || 0.38;
         var pathQuality = params.pathQuality || "bezier_recommended"; // "bezier_recommended" | "bezier_minimal" | "polyline"
 
-        // Pure standard dimensions (mm) - JIS B 1701-1
+        // Pure standard dimensions (mm) with profile shift x - JIS B 1701-1
         var d = m * z;
         var db = d * Math.cos(alpha);
-        var da = m * (z + 2.0);
-        var df = m * (z - 2.5);
+        var da = (params.da !== undefined) ? params.da : (m * (z + 2.0 + 2.0 * x));
+        var df = (params.df !== undefined) ? params.df : (m * (z - 2.5 + 2.0 * x));
 
         var rp = d / 2.0;
         var rb = db / 2.0;
         var ra = da / 2.0;
         var rf = df / 2.0;
 
-        // Effective tooth thickness on pitch circle considering backlash
-        var s_eff = (Math.PI * m / 2.0) - backlash;
+        logTrace("SPUR_GEAR", "Calculated spur gear dimensions", {
+            m: m, z: z, x: x, alphaDeg: alphaDeg,
+            d: Math.round(d * 1000) / 1000,
+            da: Math.round(da * 1000) / 1000,
+            df: Math.round(df * 1000) / 1000,
+            db: Math.round(db * 1000) / 1000,
+            backlash: backlash,
+            shaftDiameter: shaftDiameter
+        });
+
+        // Effective tooth thickness on pitch circle considering profile shift x & backlash
+        var s_eff = (Math.PI * m / 2.0) + (2.0 * x * m * Math.tan(alpha)) - backlash;
         var psi_p = s_eff / (2.0 * rp); // Half-tooth angle on pitch circle
 
         var invAlpha = inv(alpha);
@@ -99,17 +743,11 @@ var InvoluteMath = (function () {
             var invR = inv(alphaR);
             var theta = psi_p + invAlpha - invR;
 
-            var dr_dth;
-            if (alphaR < 1e-4) {
-                dr_dth = 0;
-            } else {
-                dr_dth = -rb / (Math.sin(alphaR) * Math.cos(alphaR));
-            }
-            var dx = dr_dth * Math.cos(theta) - r * Math.sin(theta);
-            var dy = dr_dth * Math.sin(theta) + r * Math.cos(theta);
-            var len = Math.sqrt(dx * dx + dy * dy);
-            var tx = (len > 1e-9) ? -dx / len : 0;
-            var ty = (len > 1e-9) ? -dy / len : 1;
+            // Rigorous analytical unit tangent vector pointing outward (r increasing):
+            // dx/dalphaR = rb * (sin alphaR / cos^3 alphaR) * cos(theta - alphaR)
+            // dy/dalphaR = rb * (sin alphaR / cos^3 alphaR) * sin(theta - alphaR)
+            var tx = Math.cos(theta - alphaR);
+            var ty = Math.sin(theta - alphaR);
 
             return {
                 r: r,
@@ -124,9 +762,12 @@ var InvoluteMath = (function () {
         // --- 2. Generating Trochoid function for right flank fillet ---
         var rc = rcFactor * m;
         var hk = 1.25 * m;
-        var vc = hk - rc;
+        var vc = hk - x * m - rc;
         var w = (Math.PI * m - s_eff) / 2.0;
-        var uc = w - vc * Math.tan(alpha) - rc * (1.0 - Math.sin(alpha)) / Math.cos(alpha);
+        // Rigorous rack corner arc center coordinate uc:
+        // Distance from center (uc, vc) to straight cutting edge (u + v*tan(alpha) = w) must strictly equal rc:
+        // (w - uc - vc*tan(alpha))*cos(alpha) = rc  ==>  uc = w - vc*tan(alpha) - rc/cos(alpha)
+        var uc = w - vc * Math.tan(alpha) - rc / Math.cos(alpha);
 
         function getTrochoidPoint(phi) {
             var psi = (Math.PI / z) - phi;
@@ -145,7 +786,7 @@ var InvoluteMath = (function () {
             // Unit normal: (-vc * er + Uc * et) / L
             var nx = (-vc * Math.cos(psi) - Uc * Math.sin(psi)) / L;
             var ny = (-vc * Math.sin(psi) + Uc * Math.cos(psi)) / L;
-            // Unit tangent along curve towards junction (increasing r):
+            // Unit tangent along curve towards junction (increasing r / decreasing phi):
             var tx = -ny;
             var ty = nx;
 
@@ -162,52 +803,67 @@ var InvoluteMath = (function () {
 
         var phi_root = uc / rp;
 
-        // --- 3. Determine exact junction between Fillet and Involute ---
-        var phi_a = phi_root;
-        var phi_b = phi_root - (50.0 * Math.PI / 180.0);
-        var searchSteps = 1000;
+        // Tangency point on rack between straight cutting edge and corner arc:
+        // Envelope condition for point K (normal angle = alpha): Uc_tangent = -vc * cot(alpha) = -vc / tan(alpha)
+        var Uc_tangent = -vc / Math.tan(alpha);
+        var phi_tangent = (Uc_tangent + uc) / rp;
+        var pTangent = getTrochoidPoint(phi_tangent);
 
-        var prevDiff = null;
-        var prevPhi = null;
-        var junctionPhi = phi_root;
-        var junctionR = rf;
+        // Theoretical undercut limit tooth count considering profile shift x
+        var z_undercut_limit = (2.0 * (1.0 - x)) / (Math.sin(alpha) * Math.sin(alpha));
+        var isUndercut = (z < z_undercut_limit);
+
+        // --- 3. Determine exact junction between Fillet and Involute ---
+        var junctionPhi = phi_tangent;
+        var junctionR = pTangent.r;
 
         if (useFillet) {
-            for (var s = 0; s <= searchSteps; s++) {
-                var phi = phi_a + (phi_b - phi_a) * (s / searchSteps);
-                var tp = getTrochoidPoint(phi);
+            if (isUndercut) {
+                // For undercut gears, corner radius or straight cutting edge sweeps into involute zone (r > rb)
+                var phi_a = phi_root;
+                var phi_b = phi_root - (50.0 * Math.PI / 180.0);
+                var searchSteps = 1000;
+                var prevDiff = null;
+                var prevPhi = null;
 
-                if (tp.r >= rb && tp.r <= ra) {
-                    var ip = getInvolutePoint(tp.r);
-                    var diff = tp.theta - ip.theta;
+                for (var s = 0; s <= searchSteps; s++) {
+                    var phi = phi_a + (phi_b - phi_a) * (s / searchSteps);
+                    var tp = getTrochoidPoint(phi);
 
-                    if (prevDiff !== null && ((prevDiff < 0 && diff >= 0) || (prevDiff > 0 && diff <= 0))) {
-                        var lowPhi = prevPhi;
-                        var highPhi = phi;
-                        for (var bisect = 0; bisect < 20; bisect++) {
-                            var mid = (lowPhi + highPhi) / 2.0;
-                            var tMid = getTrochoidPoint(mid);
-                            var iMid = getInvolutePoint(tMid.r);
-                            var dMid = tMid.theta - iMid.theta;
-                            if ((prevDiff < 0 && dMid < 0) || (prevDiff > 0 && dMid > 0)) {
-                                lowPhi = mid;
-                            } else {
-                                highPhi = mid;
+                    if (tp.r >= rb && tp.r <= ra) {
+                        var ip = getInvolutePoint(tp.r);
+                        var diff = tp.theta - ip.theta;
+
+                        if (prevDiff !== null && ((prevDiff < 0 && diff >= 0) || (prevDiff > 0 && diff <= 0))) {
+                            var lowPhi = prevPhi;
+                            var highPhi = phi;
+                            for (var bisect = 0; bisect < 20; bisect++) {
+                                var mid = (lowPhi + highPhi) / 2.0;
+                                var tMid = getTrochoidPoint(mid);
+                                var iMid = getInvolutePoint(tMid.r);
+                                var dMid = tMid.theta - iMid.theta;
+                                if ((prevDiff < 0 && dMid < 0) || (prevDiff > 0 && dMid > 0)) {
+                                    lowPhi = mid;
+                                } else {
+                                    highPhi = mid;
+                                }
                             }
+                            junctionPhi = lowPhi;
+                            var finalTp = getTrochoidPoint(junctionPhi);
+                            junctionR = finalTp.r;
+                            break;
                         }
-                        junctionPhi = lowPhi;
-                        var finalTp = getTrochoidPoint(junctionPhi);
-                        junctionR = finalTp.r;
-                        break;
+                        prevDiff = diff;
+                        prevPhi = phi;
                     }
-                    prevDiff = diff;
-                    prevPhi = phi;
                 }
+            } else {
+                // For non-undercut gears, corner fillet strictly ends at tangency point!
+                // Straight cutting edge generates pure involute above pTangent.r
+                junctionPhi = phi_tangent;
+                junctionR = pTangent.r;
             }
         }
-
-        var z_min = 2.0 / (Math.sin(alpha) * Math.sin(alpha));
-        var isUndercut = (z < z_min);
 
         // --- 4. Cubic Bezier Segment Fitting Utility ---
         function fitBezierSegment(P0, P3, Pm) {
@@ -226,6 +882,14 @@ var InvoluteMath = (function () {
                 var sol0 = (rhsX * a22 - rhsY * a12) / det;
                 var sol1 = (a11 * rhsY - a21 * rhsX) / det;
                 if (sol0 > 0 && sol0 < chord * 1.5 && sol1 > 0 && sol1 < chord * 1.5) {
+                    // Ensure control handle P2 does not cross behind P0 angular ray (monotonicity clamp)
+                    var th0 = Math.atan2(P0.y, P0.x);
+                    var n3 = P3.y * Math.cos(th0) - P3.x * Math.sin(th0);
+                    var d3 = P3.ty * Math.cos(th0) - P3.tx * Math.sin(th0);
+                    if (d3 > 1e-6 && n3 > 0) {
+                        var maxK1 = (n3 / d3) * 0.95;
+                        if (sol1 > maxK1) sol1 = maxK1;
+                    }
                     k0 = sol0;
                     k1 = sol1;
                 }
@@ -420,51 +1084,193 @@ var InvoluteMath = (function () {
         var toothPitchAngle = (2.0 * Math.PI) / z;
         var thRoot = Math.atan2(pRightRoot.y, pRightRoot.x);
         var dThRoot = toothPitchAngle - 2.0 * thRoot;
-        var L_root = (4.0 / 3.0) * rf * Math.tan(dThRoot / 4.0);
+        var hasFlatRoot = (dThRoot > 0.0001);
+        var L_root = hasFlatRoot ? ((4.0 / 3.0) * rf * Math.tan(dThRoot / 4.0)) : 0;
 
-        for (var t = 0; t < z; t++) {
-            var rot = t * toothPitchAngle;
-            var cosR = Math.cos(rot);
-            var sinR = Math.sin(rot);
+        var isMutilated = !!(params.isMutilated || params.mutilated);
+        var activeTeeth = (params.activeTeeth !== undefined) ? parseInt(params.activeTeeth, 10) : z;
+        if (isNaN(activeTeeth) || activeTeeth > z) activeTeeth = z;
+        if (activeTeeth < 0) activeTeeth = 0;
 
-            function tfPt(pt) {
-                var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
-                var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
-                return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
+        var startTooth = (params.startTooth !== undefined) ? parseInt(params.startTooth, 10) : 1;
+        if (isNaN(startTooth)) startTooth = 1;
+        var startIdx = ((startTooth - 1) % z + z) % z; // 0-based
+
+        var blankRadiusType = params.blankRadiusType || "root"; // "root" | "pitch" | "tip" | "custom"
+        var R_blank = rf; // default root circle
+        if (blankRadiusType === "tip") {
+            R_blank = ra;
+        } else if (blankRadiusType === "pitch") {
+            R_blank = rp;
+        } else if (blankRadiusType === "custom" && params.blankRadius) {
+            R_blank = parseFloat(params.blankRadius) || rf;
+        }
+
+        if (!isMutilated || activeTeeth >= z) {
+            // === Standard Full Gear Outer Bezier Loop ===
+            for (var t = 0; t < z; t++) {
+                var rot = t * toothPitchAngle;
+                var cosR = Math.cos(rot);
+                var sinR = Math.sin(rot);
+
+                function tfPt(pt) {
+                    var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
+                    var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
+                    return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
+                }
+
+                var tNodes = [];
+                for (var n = 0; n < singleToothNodes.length; n++) {
+                    var nd = singleToothNodes[n];
+                    tNodes.push({
+                        anchor: tfPt(nd.anchor),
+                        leftDirection: tfPt(nd.leftDirection),
+                        rightDirection: tfPt(nd.rightDirection),
+                        pointType: nd.pointType
+                    });
+                }
+
+                if (!hasFlatRoot) {
+                    tNodes[0].pointType = "CORNER";
+                    tNodes[tNodes.length - 1].pointType = "CORNER";
+                }
+
+                // Fill root bottom arc handles for tooth t
+                var curEndTh = rot + thRoot;
+                var curStartTh = rot - thRoot;
+
+                var rEndPt = tfPt([pRightRoot.x, pRightRoot.y]);
+                var lStartPt = tfPt([pRightRoot.x, -pRightRoot.y]);
+
+                // Outgoing handle from Right Root towards next tooth:
+                tNodes[tNodes.length - 1].rightDirection = [
+                    Math.round((rEndPt[0] - L_root * Math.sin(curEndTh) * MM_TO_PT) * 10000) / 10000,
+                    Math.round((rEndPt[1] + L_root * Math.cos(curEndTh) * MM_TO_PT) * 10000) / 10000
+                ];
+
+                // Incoming handle into Left Root from previous tooth:
+                tNodes[0].leftDirection = [
+                    Math.round((lStartPt[0] + L_root * Math.sin(curStartTh) * MM_TO_PT) * 10000) / 10000,
+                    Math.round((lStartPt[1] - L_root * Math.cos(curStartTh) * MM_TO_PT) * 10000) / 10000
+                ];
+
+                for (var n = 0; n < tNodes.length; n++) {
+                    outerNodes.push(tNodes[n]);
+                }
             }
-
-            var tNodes = [];
-            for (var n = 0; n < singleToothNodes.length; n++) {
-                var nd = singleToothNodes[n];
-                tNodes.push({
-                    anchor: tfPt(nd.anchor),
-                    leftDirection: tfPt(nd.leftDirection),
-                    rightDirection: tfPt(nd.rightDirection),
-                    pointType: nd.pointType
+        } else if (activeTeeth <= 0) {
+            // === Zero Active Teeth: Full Blank Circle (4-Bezier) ===
+            var blankCircleNodes = createArcBezierNodes(R_blank, 0, 2.0 * Math.PI);
+            for (var bi = 0; bi < blankCircleNodes.length - 1; bi++) {
+                var bnd = blankCircleNodes[bi];
+                outerNodes.push({
+                    anchor: [Math.round(bnd.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bnd.anchor[1] * MM_TO_PT * 10000) / 10000],
+                    leftDirection: [Math.round(bnd.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bnd.leftDirection[1] * MM_TO_PT * 10000) / 10000],
+                    rightDirection: [Math.round(bnd.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bnd.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                    pointType: "SMOOTH"
                 });
             }
+        } else {
+            // === Mutilated / Intermittent Gear Outer Bezier Loop ===
+            var endIdx = (startIdx + activeTeeth - 1) % z;
+            var deltaBlank = (z - activeTeeth + 1) * toothPitchAngle - 2.0 * thRoot;
+            while (deltaBlank < 0) deltaBlank += 2.0 * Math.PI;
 
-            // Fill root bottom arc handles for tooth t
-            var curEndTh = rot + thRoot;
-            var curStartTh = rot - thRoot;
+            var exitTh = (endIdx * toothPitchAngle) + thRoot;
+            var entryTh = exitTh + deltaBlank;
 
-            var rEndPt = tfPt([pRightRoot.x, pRightRoot.y]);
-            var lStartPt = tfPt([pRightRoot.x, -pRightRoot.y]);
+            // Generate blank bridging arc nodes (in mm)
+            var blankArcNodes = createArcBezierNodes(R_blank, exitTh, entryTh);
 
-            // Outgoing handle from Right Root towards next tooth:
-            tNodes[tNodes.length - 1].rightDirection = [
-                Math.round((rEndPt[0] - L_root * Math.sin(curEndTh) * MM_TO_PT) * 10000) / 10000,
-                Math.round((rEndPt[1] + L_root * Math.cos(curEndTh) * MM_TO_PT) * 10000) / 10000
-            ];
+            for (var step = 0; step < activeTeeth; step++) {
+                var t = (startIdx + step) % z;
+                var rot = t * toothPitchAngle;
+                var cosR = Math.cos(rot);
+                var sinR = Math.sin(rot);
 
-            // Incoming handle into Left Root from previous tooth:
-            tNodes[0].leftDirection = [
-                Math.round((lStartPt[0] + L_root * Math.sin(curStartTh) * MM_TO_PT) * 10000) / 10000,
-                Math.round((lStartPt[1] - L_root * Math.cos(curStartTh) * MM_TO_PT) * 10000) / 10000
-            ];
+                function tfPtM(pt) {
+                    var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
+                    var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
+                    return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
+                }
 
-            for (var n = 0; n < tNodes.length; n++) {
-                outerNodes.push(tNodes[n]);
+                var tNodes = [];
+                for (var n = 0; n < singleToothNodes.length; n++) {
+                    var nd = singleToothNodes[n];
+                    tNodes.push({
+                        anchor: tfPtM(nd.anchor),
+                        leftDirection: tfPtM(nd.leftDirection),
+                        rightDirection: tfPtM(nd.rightDirection),
+                        pointType: nd.pointType
+                    });
+                }
+
+                if (!hasFlatRoot) {
+                    tNodes[0].pointType = "CORNER";
+                    tNodes[tNodes.length - 1].pointType = "CORNER";
+                }
+
+                var curEndTh = rot + thRoot;
+                var curStartTh = rot - thRoot;
+                var rEndPt = tfPtM([pRightRoot.x, pRightRoot.y]);
+                var lStartPt = tfPtM([pRightRoot.x, -pRightRoot.y]);
+
+                if (step < activeTeeth - 1) {
+                    // Next tooth is active: regular root bottom arc
+                    tNodes[tNodes.length - 1].rightDirection = [
+                        Math.round((rEndPt[0] - L_root * Math.sin(curEndTh) * MM_TO_PT) * 10000) / 10000,
+                        Math.round((rEndPt[1] + L_root * Math.cos(curEndTh) * MM_TO_PT) * 10000) / 10000
+                    ];
+                    tNodes[0].leftDirection = [
+                        Math.round((lStartPt[0] + L_root * Math.sin(curStartTh) * MM_TO_PT) * 10000) / 10000,
+                        Math.round((lStartPt[1] - L_root * Math.cos(curStartTh) * MM_TO_PT) * 10000) / 10000
+                    ];
+                }
+
+                for (var n = 0; n < tNodes.length; n++) {
+                    outerNodes.push(tNodes[n]);
+                }
+            }
+
+            // Connect exit of last active tooth to entry of first active tooth via blank arc
+            var isRadiusMatched = Math.abs(R_blank - rf) < 0.001;
+
+            if (isRadiusMatched && blankArcNodes.length > 0) {
+                // Smooth C1 transition along root circle
+                var lastActiveNode = outerNodes[outerNodes.length - 1];
+                lastActiveNode.rightDirection = [
+                    Math.round(blankArcNodes[0].rightDirection[0] * MM_TO_PT * 10000) / 10000,
+                    Math.round(blankArcNodes[0].rightDirection[1] * MM_TO_PT * 10000) / 10000
+                ];
+
+                for (var b = 1; b < blankArcNodes.length - 1; b++) {
+                    var bNode = blankArcNodes[b];
+                    outerNodes.push({
+                        anchor: [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000],
+                        leftDirection: [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000],
+                        rightDirection: [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                        pointType: "SMOOTH"
+                    });
+                }
+
+                outerNodes[0].leftDirection = [
+                    Math.round(blankArcNodes[blankArcNodes.length - 1].leftDirection[0] * MM_TO_PT * 10000) / 10000,
+                    Math.round(blankArcNodes[blankArcNodes.length - 1].leftDirection[1] * MM_TO_PT * 10000) / 10000
+                ];
+            } else if (blankArcNodes.length > 0) {
+                // Step transition to different radius (e.g. tip locking drum)
+                outerNodes[outerNodes.length - 1].pointType = "CORNER";
+                outerNodes[0].pointType = "CORNER";
+
+                for (var b = 0; b < blankArcNodes.length; b++) {
+                    var bNode = blankArcNodes[b];
+                    outerNodes.push({
+                        anchor: [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000],
+                        leftDirection: [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000],
+                        rightDirection: [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                        pointType: (b === 0 || b === blankArcNodes.length - 1) ? "CORNER" : "SMOOTH"
+                    });
+                }
             }
         }
 
@@ -513,50 +1319,137 @@ var InvoluteMath = (function () {
         for (var i = 1; i < rightFilletDown.length; i++) singleToothCombined.push(rightFilletDown[i]);
 
         var outerPoints = [];
-        for (var t = 0; t < z; t++) {
-            var rot = t * toothPitchAngle;
-            var cosRot = Math.cos(rot);
-            var sinRot = Math.sin(rot);
+        if (!isMutilated || activeTeeth >= z) {
+            for (var t = 0; t < z; t++) {
+                var rot = t * toothPitchAngle;
+                var cosRot = Math.cos(rot);
+                var sinRot = Math.sin(rot);
 
-            for (var ptIdx = 0; ptIdx < singleToothCombined.length; ptIdx++) {
-                var px = singleToothCombined[ptIdx].x;
-                var py = singleToothCombined[ptIdx].y;
-                var rx = (px * cosRot - py * sinRot) * MM_TO_PT;
-                var ry = (px * sinRot + py * cosRot) * MM_TO_PT;
-                outerPoints.push([Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000]);
+                for (var ptIdx = 0; ptIdx < singleToothCombined.length; ptIdx++) {
+                    var px = singleToothCombined[ptIdx].x;
+                    var py = singleToothCombined[ptIdx].y;
+                    var rx = (px * cosRot - py * sinRot) * MM_TO_PT;
+                    var ry = (px * sinRot + py * cosRot) * MM_TO_PT;
+                    outerPoints.push([Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000]);
+                }
+
+                if (hasFlatRoot) {
+                    var nextRot = (t + 1) * toothPitchAngle;
+                    var curEndTheta = rot + rightFilletDown[rightFilletDown.length - 1].theta;
+                    var nextStartTheta = nextRot + leftFilletUp[0].theta;
+                    var rootRadiusPt = rf * MM_TO_PT;
+
+                    for (var sub = 1; sub <= 2; sub++) {
+                        var rTheta = curEndTheta + (nextStartTheta - curEndTheta) * (sub / 3.0);
+                        outerPoints.push([
+                            Math.round(rootRadiusPt * Math.cos(rTheta) * 10000) / 10000,
+                            Math.round(rootRadiusPt * Math.sin(rTheta) * 10000) / 10000
+                        ]);
+                    }
+                }
+            }
+        } else if (activeTeeth <= 0) {
+            var nCircPts = 72;
+            for (var cp = 0; cp < nCircPts; cp++) {
+                var cTh = cp * (2.0 * Math.PI / nCircPts);
+                outerPoints.push([
+                    Math.round(R_blank * MM_TO_PT * Math.cos(cTh) * 10000) / 10000,
+                    Math.round(R_blank * MM_TO_PT * Math.sin(cTh) * 10000) / 10000
+                ]);
+            }
+        } else {
+            var endIdx = (startIdx + activeTeeth - 1) % z;
+            var deltaBlank = (z - activeTeeth + 1) * toothPitchAngle - 2.0 * thRoot;
+            while (deltaBlank < 0) deltaBlank += 2.0 * Math.PI;
+
+            for (var step = 0; step < activeTeeth; step++) {
+                var t = (startIdx + step) % z;
+                var rot = t * toothPitchAngle;
+                var cosRot = Math.cos(rot);
+                var sinRot = Math.sin(rot);
+
+                for (var ptIdx = 0; ptIdx < singleToothCombined.length; ptIdx++) {
+                    var px = singleToothCombined[ptIdx].x;
+                    var py = singleToothCombined[ptIdx].y;
+                    var rx = (px * cosRot - py * sinRot) * MM_TO_PT;
+                    var ry = (px * sinRot + py * cosRot) * MM_TO_PT;
+                    outerPoints.push([Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000]);
+                }
+
+                if (step < activeTeeth - 1 && hasFlatRoot) {
+                    var nextRot = ((t + 1) % z) * toothPitchAngle;
+                    var curEndTheta = rot + rightFilletDown[rightFilletDown.length - 1].theta;
+                    var nextStartTheta = nextRot + leftFilletUp[0].theta;
+                    var rootRadiusPt = rf * MM_TO_PT;
+
+                    for (var sub = 1; sub <= 2; sub++) {
+                        var rTheta = curEndTheta + (nextStartTheta - curEndTheta) * (sub / 3.0);
+                        outerPoints.push([
+                            Math.round(rootRadiusPt * Math.cos(rTheta) * 10000) / 10000,
+                            Math.round(rootRadiusPt * Math.sin(rTheta) * 10000) / 10000
+                        ]);
+                    }
+                }
             }
 
-            var nextRot = (t + 1) * toothPitchAngle;
-            var curEndTheta = rot + rightFilletDown[rightFilletDown.length - 1].theta;
-            var nextStartTheta = nextRot + leftFilletUp[0].theta;
-            var rootRadiusPt = rf * MM_TO_PT;
-
-            for (var sub = 1; sub <= 2; sub++) {
-                var rTheta = curEndTheta + (nextStartTheta - curEndTheta) * (sub / 3.0);
+            // Sample blank arc points
+            var exitTheta = (endIdx * toothPitchAngle) + rightFilletDown[rightFilletDown.length - 1].theta;
+            var numBlankSteps = Math.max(4, Math.ceil(deltaBlank / (Math.PI / 18.0)));
+            var blankRadiusPt = R_blank * MM_TO_PT;
+            for (var bs = 1; bs <= numBlankSteps; bs++) {
+                var bTh = exitTheta + deltaBlank * (bs / (numBlankSteps + 1.0));
                 outerPoints.push([
-                    Math.round(rootRadiusPt * Math.cos(rTheta) * 10000) / 10000,
-                    Math.round(rootRadiusPt * Math.sin(rTheta) * 10000) / 10000
+                    Math.round(blankRadiusPt * Math.cos(bTh) * 10000) / 10000,
+                    Math.round(blankRadiusPt * Math.sin(bTh) * 10000) / 10000
                 ]);
             }
         }
 
-        var holeRadius = (shaftDiameter > 0) ? (shaftDiameter / 2.0) : 0;
+        var shaftType = params.shaftType || "丸穴";
+        var shaftOptions = params.shaftOptions || {};
+        var shaftHole = calculateShaftHoleGeometry(shaftDiameter, shaftType, shaftOptions);
+        var holeRadius = (shaftHole.hasHole) ? (shaftDiameter / 2.0) : 0;
+
+        var pinHoles = null;
+        if (params.pinHoles || (shaftOptions && shaftOptions.drawPinHoles)) {
+            var pinOpt = (typeof params.pinHoles === "object") ? params.pinHoles : (shaftOptions.pinHoles || {});
+            pinHoles = calculateAlignmentPinHoles(rf, shaftDiameter, pinOpt);
+        }
 
         return {
             m: m,
             z: z,
+            x: x,
             alphaDeg: alphaDeg,
             pathQuality: pathQuality,
+            isMutilated: isMutilated,
+            activeTeeth: isMutilated ? activeTeeth : z,
+            startTooth: isMutilated ? startTooth : 1,
+            blankRadiusType: blankRadiusType,
+            blankRadiusMm: R_blank,
+            blankRadiusPt: R_blank * MM_TO_PT,
             pitchDiameter: d,
             baseDiameter: db,
             tipDiameter: da,
             rootDiameter: df,
+            rpMm: rp,
+            rbMm: rb,
+            raMm: ra,
+            rfMm: rf,
+            rpPt: rp * MM_TO_PT,
+            rbPt: rb * MM_TO_PT,
+            raPt: ra * MM_TO_PT,
+            rfPt: rf * MM_TO_PT,
             pitchRadiusPt: rp * MM_TO_PT,
             baseRadiusPt: rb * MM_TO_PT,
             tipRadiusPt: ra * MM_TO_PT,
             rootRadiusPt: rf * MM_TO_PT,
             holeRadiusPt: holeRadius * MM_TO_PT,
-            hasHole: holeRadius > 0,
+            hasHole: shaftHole.hasHole,
+            shaftDiameter: shaftDiameter,
+            shaftType: shaftHole.shaftType,
+            shaftHole: shaftHole,
+            pinHoles: pinHoles,
             outerNodes: outerNodes,             // Bezier nodes for full closed contour
             singleToothNodes: singleToothNodes, // Bezier nodes for 1 tooth
             outerPoints: outerPoints,           // Polyline points fallback
@@ -600,13 +1493,2783 @@ var InvoluteMath = (function () {
         };
     }
 
-    return {
-        MM_TO_PT: MM_TO_PT,
-        getUndercutLimit: getUndercutLimit,
-        calculateSpurGear: calculateSpurGear,
-        calculateMeshingPair: calculateMeshingPair
+    /**
+     * Calculate rack profile geometry and Bezier contour nodes compliant with JIS B 1701.
+     * 
+     * @param {Object} params
+     *   - m: Module (mm)
+     *   - zRack: Number of teeth on rack (integer, default 10)
+     *   - alphaDeg: Pressure angle (deg, default 20)
+     *   - backlash: Circumferential backlash (mm, default 0.0)
+     *   - backHeight: Base backing thickness from root line downward (mm, default 2.5 * m)
+     *   - rcFactor: Root fillet radius factor (default 0.38)
+     */
+    function calculateRack(params) {
+        var m = params.m;
+        var zRack = Math.max(1, Math.round(params.zRack !== undefined ? params.zRack : (params.z !== undefined ? params.z : 10)));
+        var alphaDeg = params.alphaDeg || 20;
+        var alpha = alphaDeg * (Math.PI / 180.0);
+        var backlash = params.backlash || 0.0;
+        var rcFactor = params.rcFactor || 0.38;
+        var backHeight = (params.backHeight !== undefined) ? params.backHeight : ((params.height !== undefined) ? Math.max(0.5, params.height - 2.25 * m) : (2.5 * m));
+
+        var pitch = Math.PI * m;
+        var ha = 1.0 * m;
+        var hf = 1.25 * m;
+        var rc = rcFactor * m;
+
+        var s_eff = (pitch / 2.0) - backlash;
+        var tanA = Math.tan(alpha);
+        var cosA = Math.cos(alpha);
+        var sinA = Math.sin(alpha);
+
+        var y_tan = -hf + rc * (1.0 - sinA);
+        var x_tan = (s_eff / 2.0) - y_tan * tanA;
+        var x_c = x_tan + rc * cosA;
+        var x_tip = (s_eff / 2.0) - ha * tanA;
+
+        // Fillet Bezier arc parameter: arcAngle = PI/2 - alpha
+        var arcAngle = (Math.PI / 2.0) - alpha;
+        var kappa = (4.0 / 3.0) * rc * Math.tan(arcAngle / 4.0);
+
+        var totalLength = zRack * pitch;
+        var leftX = -totalLength / 2.0;
+        var rightX = totalLength / 2.0;
+
+        var outerNodes = [];
+
+        for (var k = 0; k < zRack; k++) {
+            var cx = leftX + (k + 0.5) * pitch;
+
+            var pSpaceLeft = [cx - pitch / 2.0, -hf];
+            var pFilletLeftStart = [cx - x_c, -hf];
+            var pFilletLeftEnd = [cx - x_tan, y_tan];
+
+            var hLeftStart = [pFilletLeftStart[0] + kappa, pFilletLeftStart[1]];
+            var hLeftEnd = [pFilletLeftEnd[0] - kappa * sinA, pFilletLeftEnd[1] - kappa * cosA];
+
+            var pTipLeft = [cx - x_tip, ha];
+            var pTipRight = [cx + x_tip, ha];
+
+            var pFilletRightStart = [cx + x_tan, y_tan];
+            var pFilletRightEnd = [cx + x_c, -hf];
+            var hRightStart = [pFilletRightStart[0] + kappa * sinA, pFilletRightStart[1] - kappa * cosA];
+            var hRightEnd = [pFilletRightEnd[0] - kappa, pFilletRightEnd[1]];
+
+            var pSpaceRight = [cx + pitch / 2.0, -hf];
+
+            // Space left
+            outerNodes.push({
+                anchor: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "CORNER"
+            });
+
+            // Fillet left start
+            outerNodes.push({
+                anchor: [Math.round(pFilletLeftStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftStart[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pFilletLeftStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftStart[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(hLeftStart[0] * MM_TO_PT * 10000) / 10000, Math.round(hLeftStart[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "SMOOTH"
+            });
+
+            // Fillet left end
+            outerNodes.push({
+                anchor: [Math.round(pFilletLeftEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftEnd[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(hLeftEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(hLeftEnd[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pFilletLeftEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftEnd[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "SMOOTH"
+            });
+
+            // Tip Left
+            outerNodes.push({
+                anchor: [Math.round(pTipLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipLeft[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pTipLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipLeft[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pTipLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipLeft[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "CORNER"
+            });
+
+            // Tip Right
+            outerNodes.push({
+                anchor: [Math.round(pTipRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipRight[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pTipRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipRight[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pTipRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipRight[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "CORNER"
+            });
+
+            // Fillet right start
+            outerNodes.push({
+                anchor: [Math.round(pFilletRightStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightStart[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pFilletRightStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightStart[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(hRightStart[0] * MM_TO_PT * 10000) / 10000, Math.round(hRightStart[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "SMOOTH"
+            });
+
+            // Fillet right end
+            outerNodes.push({
+                anchor: [Math.round(pFilletRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightEnd[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(hRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(hRightEnd[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pFilletRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightEnd[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "SMOOTH"
+            });
+
+            // Space right
+            outerNodes.push({
+                anchor: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "CORNER"
+            });
+        }
+
+        // Base rectangle bottom corners
+        var y_base_mm = -(hf + backHeight);
+        var y_base_pt = y_base_mm * MM_TO_PT;
+
+        outerNodes.push({
+            anchor: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            leftDirection: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            rightDirection: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            pointType: "CORNER"
+        });
+
+        outerNodes.push({
+            anchor: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            leftDirection: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            rightDirection: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(y_base_pt * 10000) / 10000],
+            pointType: "CORNER"
+        });
+
+        var result = {
+            m: m,
+            zRack: zRack,
+            alphaDeg: alphaDeg,
+            pitchMm: pitch,
+            haMm: ha,
+            hfMm: hf,
+            totalLengthMm: totalLength,
+            totalLengthPt: totalLength * MM_TO_PT,
+            backHeightMm: backHeight,
+            totalHeightMm: ha + hf + backHeight,
+            pitchLinePt: {
+                start: [Math.round(leftX * MM_TO_PT * 10000) / 10000, 0],
+                end: [Math.round(rightX * MM_TO_PT * 10000) / 10000, 0]
+            },
+            outerNodes: outerNodes
+        };
+
+        logTrace("RACK", "Calculated rack dimensions", {
+            m: m,
+            zRack: zRack,
+            alphaDeg: alphaDeg,
+            totalLengthMm: Math.round(totalLength * 100) / 100,
+            backHeightMm: Math.round(backHeight * 100) / 100,
+            totalHeightMm: Math.round((ha + hf + backHeight) * 100) / 100
+        });
+
+        return result;
+    }
+
+    /**
+     * Calculate meshing offset and rotation for Pinion and Rack.
+     * 
+     * @param {number} m Module
+     * @param {number} zPinion Pinion tooth count
+     * @param {number} zRack Rack tooth count
+     * @param {number} angleDeg Placement direction of rack from pinion center (default -90 for bottom)
+     * @param {number} phiPinionDeg Initial rotation of pinion
+     */
+    function calculateRackMeshing(m, zPinion, zRack, angleDeg, phiPinionDeg) {
+        var angleRad = ((angleDeg !== undefined) ? angleDeg : -90.0) * (Math.PI / 180.0);
+        var phiPinion = (phiPinionDeg || 0) * (Math.PI / 180.0);
+
+        var rp_mm = (m * zPinion) / 2.0;
+        var rp_pt = rp_mm * MM_TO_PT;
+        var pitch = Math.PI * m;
+
+        var contactPtX = rp_pt * Math.cos(angleRad);
+        var contactPtY = rp_pt * Math.sin(angleRad);
+
+        // Rack tangential direction: angleRad + 90 deg
+        var rackRotDeg = (angleDeg !== undefined ? angleDeg : -90.0) + 90.0;
+
+        // Kinematic shift along rack axis:
+        // When pinion rotates by deltaPhi, it rolls without slipping along rack pitch line: deltaX = -rp * deltaPhi
+        // Initial phase alignment:
+        // When pinion tooth points directly towards contact point (phiPinion = angleRad, so deltaPhi = 0),
+        // rack origin (x = 0) is already at a tooth space center (between teeth k=5 and k=6).
+        // Therefore, at deltaPhi = 0, no additional phase shift is needed (rackShiftMm = 0).
+        var deltaPhi = phiPinion - angleRad;
+        var rackShiftMm = -rp_mm * deltaPhi;
+        var rackShiftPt = rackShiftMm * MM_TO_PT;
+
+        return {
+            pinionRadiusPt: rp_pt,
+            contactPointX: contactPtX,
+            contactPointY: contactPtY,
+            rackOriginX: contactPtX,
+            rackOriginY: contactPtY,
+            rackRotationDeg: rackRotDeg,
+            rackShiftPt: rackShiftPt,
+            pinionRotationDeg: phiPinion * (180.0 / Math.PI)
+        };
+    }
+
+    /**
+     * Calculate internal ring gear geometric profile using cubic Bezier curve fitting.
+     * Follows JIS B 1701-1 standard proportions for internal gears:
+     * - Tip circle (internal inner diameter): ra = m * (z - 2) / 2
+     * - Pitch circle: rp = m * z / 2
+     * - Base circle: rb = rp * cos(alpha)
+     * - Root circle (external outer tooth base): rf = m * (z + 2.5) / 2
+     * - Rim outer circle: r_rim = rf + rimThickness
+     * 
+     * @param {Object} params
+     *   m: Module (mm)
+     *   z: Tooth count (z >= 34 for fully involute at 20 deg)
+     *   alphaDeg: Pressure angle in degrees (default 20.0)
+     *   backlash: Normal backlash in mm (default 0.0)
+     *   rimThickness: Rim wall thickness in mm (default 3.0 * m)
+     *   pathQuality: "bezier_recommended" (6 nodes/tooth) or "bezier_minimal" (4 nodes/tooth)
+     */
+    function calculateInternalGear(params) {
+        var m = params.m || 2.0;
+        var z = params.z || 48;
+        var x = params.x || 0.0;
+        var alphaDeg = (params.alphaDeg !== undefined) ? params.alphaDeg : 20.0;
+        var alpha = alphaDeg * (Math.PI / 180.0);
+        var backlash = params.backlash || 0.0;
+        var rimThickness = (params.rimThickness !== undefined) ? params.rimThickness : (3.0 * m);
+        var pathQuality = params.pathQuality || "bezier_recommended";
+
+        var pitch = Math.PI * m;
+        var rp = (m * z) / 2.0;
+        var rb = rp * Math.cos(alpha);
+        var ha = m;
+        var hf = 1.25 * m;
+        var ra = (params.ra !== undefined) ? params.ra : ((m * (z - 2.0 + 2.0 * x)) / 2.0);
+        var rf = (params.rf !== undefined) ? params.rf : ((m * (z + 2.5 + 2.0 * x)) / 2.0);
+        var rRim = rf + rimThickness;
+
+        var s_eff = (pitch / 2.0) - (2.0 * x * m * Math.tan(alpha)) - backlash;
+        var psi_p = s_eff / (2.0 * rp);
+        var invAlpha = Math.tan(alpha) - alpha;
+        var toothPitch = (2.0 * Math.PI) / z;
+
+        var z_limit = 2.0 / (1.0 - Math.cos(alpha));
+        var isUndercut = (z < z_limit);
+
+        logTrace("INTERNAL_GEAR", "Calculated internal gear dimensions", {
+            m: m, z: z, x: x, alphaDeg: alphaDeg,
+            dp: Math.round(2.0 * rp * 1000) / 1000,
+            da: Math.round(2.0 * ra * 1000) / 1000,
+            df: Math.round(2.0 * rf * 1000) / 1000,
+            db: Math.round(2.0 * rb * 1000) / 1000,
+            rRim: Math.round(rRim * 1000) / 1000,
+            isUndercut: isUndercut
+        });
+
+        // Concave Involute evaluator
+        function getInvolutePoint(r) {
+            var cos_a = Math.min(1.0, rb / Math.max(rb, r));
+            var alpha_r = Math.acos(cos_a);
+            var inv_r = Math.tan(alpha_r) - alpha_r;
+            var th = psi_p + inv_r - invAlpha;
+            var tx = Math.cos(th + alpha_r);
+            var ty = Math.sin(th + alpha_r);
+            return {
+                r: r,
+                x: r * Math.cos(th),
+                y: r * Math.sin(th),
+                theta: th,
+                alpha_r: alpha_r,
+                tx: tx,
+                ty: ty
+            };
+        }
+
+        // Cubic Bezier Segment Fitting Utility
+        function fitBezierSegment(P0, P3, Pm) {
+            var chord = Math.sqrt(Math.pow(P3.x - P0.x, 2) + Math.pow(P3.y - P0.y, 2));
+            var rhsX = Pm.x - 0.5 * (P0.x + P3.x);
+            var rhsY = Pm.y - 0.5 * (P0.y + P3.y);
+
+            var a11 = 0.375 * P0.tx, a12 = -0.375 * P3.tx;
+            var a21 = 0.375 * P0.ty, a22 = -0.375 * P3.ty;
+            var det = a11 * a22 - a12 * a21;
+
+            var k0 = chord / 3.0;
+            var k1 = chord / 3.0;
+
+            if (Math.abs(det) > 1e-7) {
+                var sol0 = (rhsX * a22 - rhsY * a12) / det;
+                var sol1 = (a11 * rhsY - a21 * rhsX) / det;
+                if (sol0 > 0 && sol0 < chord * 1.5 && sol1 > 0 && sol1 < chord * 1.5) {
+                    // Ensure control handle P2 does not cross behind P0 angular ray (monotonicity clamp)
+                    var th0 = Math.atan2(P0.y, P0.x);
+                    var n3 = P3.y * Math.cos(th0) - P3.x * Math.sin(th0);
+                    var d3 = P3.ty * Math.cos(th0) - P3.tx * Math.sin(th0);
+                    if (d3 > 1e-6 && n3 > 0) {
+                        var maxK1 = (n3 / d3) * 0.95;
+                        if (sol1 > maxK1) sol1 = maxK1;
+                    }
+                    k0 = sol0;
+                    k1 = sol1;
+                }
+            }
+
+            return {
+                P0: P0,
+                P1: { x: P0.x + k0 * P0.tx, y: P0.y + k0 * P0.ty },
+                P2: { x: P3.x - k1 * P3.tx, y: P3.y - k1 * P3.ty },
+                P3: P3
+            };
+        }
+
+        var useFillet = (params.useFillet !== false);
+        var rcFactor = (params.rcFactor !== undefined) ? params.rcFactor : 0.38;
+        var rc = rcFactor * m;
+
+        // Inward normal for internal gear involute (towards space center)
+        function getInvolutePointWithNormal(r) {
+            var pt = getInvolutePoint(r);
+            pt.nx = -pt.ty;
+            pt.ny = pt.tx;
+            return pt;
+        }
+
+        var pJuncR, pRootR, filP1, filP2, cAngle;
+        var halfPitch = Math.PI / z;
+        var maxAngle = halfPitch * 0.98;
+
+        if (useFillet) {
+            function solveFillet(rcTest) {
+                var R_c = rf - rcTest;
+                var lowR = rp;
+                var highR = rf;
+                function distError(r) {
+                    var p = getInvolutePointWithNormal(r);
+                    var cx = p.x + rcTest * p.nx;
+                    var cy = p.y + rcTest * p.ny;
+                    return Math.sqrt(cx * cx + cy * cy) - R_c;
+                }
+                if (distError(lowR) * distError(highR) > 0) return null;
+                for (var iter = 0; iter < 30; iter++) {
+                    var midR = (lowR + highR) / 2.0;
+                    if (distError(lowR) * distError(midR) <= 0) highR = midR;
+                    else lowR = midR;
+                }
+                var juncR = (lowR + highR) / 2.0;
+                var pJ = getInvolutePointWithNormal(juncR);
+                var cx = pJ.x + rcTest * pJ.nx;
+                var cy = pJ.y + rcTest * pJ.ny;
+                var cAng = Math.atan2(cy, cx);
+                return { juncR: juncR, cAngle: cAng, cX: cx, cY: cy };
+            }
+
+            var fRes = solveFillet(rc);
+            if (!fRes || fRes.cAngle > maxAngle) {
+                for (var k = 0; k < 20; k++) {
+                    rc *= 0.85;
+                    fRes = solveFillet(rc);
+                    if (fRes && fRes.cAngle <= maxAngle) break;
+                }
+            }
+
+            if (fRes) {
+                var cX = fRes.cX;
+                var cY = fRes.cY;
+                cAngle = fRes.cAngle;
+                pJuncR = getInvolutePoint(fRes.juncR);
+                pRootR = {
+                    x: rf * Math.cos(cAngle),
+                    y: rf * Math.sin(cAngle),
+                    r: rf,
+                    theta: cAngle
+                };
+
+                // Rigorous 3rd-order Bezier arc approximation for fillet (pJuncR to pRootR)
+                var phiJunc = Math.atan2(pJuncR.y - cY, pJuncR.x - cX);
+                var phiRoot = Math.atan2(pRootR.y - cY, pRootR.x - cX);
+                var dPhi = phiRoot - phiJunc;
+                while (dPhi > Math.PI) dPhi -= 2.0 * Math.PI;
+                while (dPhi < -Math.PI) dPhi += 2.0 * Math.PI;
+
+                var hArc = (4.0 / 3.0) * Math.tan(Math.abs(dPhi) / 4.0) * rc;
+                var signArc = (dPhi >= 0) ? 1 : -1;
+                var tJunc = [-signArc * Math.sin(phiJunc), signArc * Math.cos(phiJunc)];
+                var tRoot = [-signArc * Math.sin(phiRoot), signArc * Math.cos(phiRoot)];
+
+                filP1 = { x: pJuncR.x + hArc * tJunc[0], y: pJuncR.y + hArc * tJunc[1] };
+                filP2 = { x: pRootR.x - hArc * tRoot[0], y: pRootR.y - hArc * tRoot[1] };
+            } else {
+                pJuncR = getInvolutePoint(rf);
+                cAngle = pJuncR.theta;
+                pRootR = pJuncR;
+                filP1 = filP2 = null;
+            }
+        } else {
+            pJuncR = getInvolutePoint(rf);
+            cAngle = pJuncR.theta;
+            pRootR = pJuncR;
+            filP1 = filP2 = null;
+        }
+
+        var rMid = (ra + pJuncR.r) / 2.0;
+        var pTipR = getInvolutePoint(ra);
+        var pMidR = getInvolutePoint(rMid);
+
+        var segR1 = fitBezierSegment(pTipR, pMidR, getInvolutePoint((ra + rMid) / 2.0));
+        var segR2 = fitBezierSegment(pMidR, pJuncR, getInvolutePoint((rMid + pJuncR.r) / 2.0));
+
+        // Tip arc control handle length
+        var dThTip = 2.0 * pTipR.theta;
+        var L_tip = (4.0 / 3.0) * ra * Math.tan(dThTip / 4.0);
+
+        // Root space arc control handle length (dynamic check)
+        var dThSpace = toothPitch - 2.0 * cAngle;
+        var hasFlatSpace = (dThSpace > 0.0001);
+        var L_space = hasFlatSpace ? ((4.0 / 3.0) * rf * Math.tan(dThSpace / 4.0)) : 0;
+
+        // Assemble inner contour nodes (CCW cyclic path)
+        var innerContourNodes = [];
+
+        for (var k = 0; k < z; k++) {
+            var phi_k = k * toothPitch;
+            var cos_k = Math.cos(phi_k);
+            var sin_k = Math.sin(phi_k);
+
+            function rot(pt) {
+                return [
+                    Math.round((pt[0] * cos_k - pt[1] * sin_k) * MM_TO_PT * 10000) / 10000,
+                    Math.round((pt[0] * sin_k + pt[1] * cos_k) * MM_TO_PT * 10000) / 10000
+                ];
+            }
+
+            // 1. Left Root Node (at angle -cAngle)
+            var p_lr = [pRootR.x, -pRootR.y];
+            var tangent_lr = [Math.sin(cAngle), Math.cos(cAngle)];
+            var in_h_lr = [p_lr[0] - L_space * tangent_lr[0], p_lr[1] - L_space * tangent_lr[1]];
+            var out_h_lr = filP2 ? [filP2.x, -filP2.y] : [segR2.P2.x, -segR2.P2.y];
+
+            innerContourNodes.push({
+                anchor: rot(p_lr),
+                leftDirection: rot(in_h_lr),
+                rightDirection: rot(out_h_lr),
+                pointType: hasFlatSpace ? "SMOOTH" : "CORNER"
+            });
+
+            // 2. Left Fillet Junction Node (if fillet enabled)
+            if (filP1) {
+                var p_lj = [pJuncR.x, -pJuncR.y];
+                var in_h_lj = [filP1.x, -filP1.y];
+                var out_h_lj = [segR2.P2.x, -segR2.P2.y];
+                innerContourNodes.push({
+                    anchor: rot(p_lj),
+                    leftDirection: rot(in_h_lj),
+                    rightDirection: rot(out_h_lj),
+                    pointType: "SMOOTH"
+                });
+            }
+
+            // 3. Left Mid Node (at angle -th_mid)
+            var p_lm = [pMidR.x, -pMidR.y];
+            var in_h_lm = [segR2.P1.x, -segR2.P1.y];
+            var out_h_lm = [segR1.P2.x, -segR1.P2.y];
+
+            innerContourNodes.push({
+                anchor: rot(p_lm),
+                leftDirection: rot(in_h_lm),
+                rightDirection: rot(out_h_lm),
+                pointType: "SMOOTH"
+            });
+
+            // 4. Left Tip Node (at angle -th_a)
+            var p_lt = [pTipR.x, -pTipR.y];
+            var in_h_lt = [segR1.P1.x, -segR1.P1.y];
+            var tangent_lt = [Math.sin(pTipR.theta), Math.cos(pTipR.theta)];
+            var out_h_lt = [p_lt[0] + L_tip * tangent_lt[0], p_lt[1] + L_tip * tangent_lt[1]];
+
+            innerContourNodes.push({
+                anchor: rot(p_lt),
+                leftDirection: rot(in_h_lt),
+                rightDirection: rot(out_h_lt),
+                pointType: "CORNER"
+            });
+
+            // 5. Right Tip Node (at angle +th_a)
+            var p_rt = [pTipR.x, pTipR.y];
+            var tangent_rt = [-Math.sin(pTipR.theta), Math.cos(pTipR.theta)];
+            var in_h_rt = [p_rt[0] - L_tip * tangent_rt[0], p_rt[1] - L_tip * tangent_rt[1]];
+            var out_h_rt = [segR1.P1.x, segR1.P1.y];
+
+            innerContourNodes.push({
+                anchor: rot(p_rt),
+                leftDirection: rot(in_h_rt),
+                rightDirection: rot(out_h_rt),
+                pointType: "CORNER"
+            });
+
+            // 6. Right Mid Node (at angle +th_mid)
+            var p_rm = [pMidR.x, pMidR.y];
+            var in_h_rm = [segR1.P2.x, segR1.P2.y];
+            var out_h_rm = [segR2.P1.x, segR2.P1.y];
+
+            innerContourNodes.push({
+                anchor: rot(p_rm),
+                leftDirection: rot(in_h_rm),
+                rightDirection: rot(out_h_rm),
+                pointType: "SMOOTH"
+            });
+
+            // 7. Right Fillet Junction Node (if fillet enabled)
+            if (filP1) {
+                var p_rj = [pJuncR.x, pJuncR.y];
+                var in_h_rj = [segR2.P2.x, segR2.P2.y];
+                var out_h_rj = [filP1.x, filP1.y];
+                innerContourNodes.push({
+                    anchor: rot(p_rj),
+                    leftDirection: rot(in_h_rj),
+                    rightDirection: rot(out_h_rj),
+                    pointType: "SMOOTH"
+                });
+            }
+
+            // 8. Right Root Node (at angle +cAngle)
+            var p_rr = [pRootR.x, pRootR.y];
+            var in_h_rr = filP2 ? [filP2.x, filP2.y] : [segR2.P2.x, segR2.P2.y];
+            var tangent_rr = [-Math.sin(cAngle), Math.cos(cAngle)];
+            var out_h_rr = [p_rr[0] + L_space * tangent_rr[0], p_rr[1] + L_space * tangent_rr[1]];
+
+            innerContourNodes.push({
+                anchor: rot(p_rr),
+                leftDirection: rot(in_h_rr),
+                rightDirection: rot(out_h_rr),
+                pointType: hasFlatSpace ? "SMOOTH" : "CORNER"
+            });
+        }
+
+        // Rim outer circle nodes (standard 4-bezier circle)
+        var rimCircleNodes = [];
+        var KAPPA = (4.0 / 3.0) * (Math.sqrt(2.0) - 1.0); // ~0.5522847
+        var rRimPt = rRim * MM_TO_PT;
+        var kRimPt = rRimPt * KAPPA;
+
+        // Node 0: Right (rRim, 0)
+        rimCircleNodes.push({
+            anchor: [Math.round(rRimPt * 10000) / 10000, 0],
+            leftDirection: [Math.round(rRimPt * 10000) / 10000, Math.round(-kRimPt * 10000) / 10000],
+            rightDirection: [Math.round(rRimPt * 10000) / 10000, Math.round(kRimPt * 10000) / 10000],
+            pointType: "SMOOTH"
+        });
+        // Node 1: Top (0, rRim)
+        rimCircleNodes.push({
+            anchor: [0, Math.round(rRimPt * 10000) / 10000],
+            leftDirection: [Math.round(kRimPt * 10000) / 10000, Math.round(rRimPt * 10000) / 10000],
+            rightDirection: [Math.round(-kRimPt * 10000) / 10000, Math.round(rRimPt * 10000) / 10000],
+            pointType: "SMOOTH"
+        });
+        // Node 2: Left (-rRim, 0)
+        rimCircleNodes.push({
+            anchor: [Math.round(-rRimPt * 10000) / 10000, 0],
+            leftDirection: [Math.round(-rRimPt * 10000) / 10000, Math.round(kRimPt * 10000) / 10000],
+            rightDirection: [Math.round(-rRimPt * 10000) / 10000, Math.round(-kRimPt * 10000) / 10000],
+            pointType: "SMOOTH"
+        });
+        // Node 3: Bottom (0, -rRim)
+        rimCircleNodes.push({
+            anchor: [0, Math.round(-rRimPt * 10000) / 10000],
+            leftDirection: [Math.round(-kRimPt * 10000) / 10000, Math.round(-rRimPt * 10000) / 10000],
+            rightDirection: [Math.round(kRimPt * 10000) / 10000, Math.round(-rRimPt * 10000) / 10000],
+            pointType: "SMOOTH"
+        });
+
+        return {
+            m: m,
+            z: z,
+            x: x,
+            alphaDeg: alphaDeg,
+            pitchMm: pitch,
+            rpMm: rp,
+            rbMm: rb,
+            raMm: ra,
+            rfMm: rf,
+            rRimMm: rRim,
+            rpPt: rp * MM_TO_PT,
+            rbPt: rb * MM_TO_PT,
+            raPt: ra * MM_TO_PT,
+            rfPt: rf * MM_TO_PT,
+            rRimPt: rRimPt,
+            isUndercut: isUndercut,
+            innerContourNodes: innerContourNodes,
+            rimCircleNodes: rimCircleNodes
+        };
+    }
+
+    /**
+     * Calculate internal gear pair meshing parameters (Pinion inside Internal Ring Gear).
+     * 
+     * @param {number} m Module
+     * @param {number} zPinion Pinion tooth count
+     * @param {number} zInternal Internal gear tooth count
+     * @param {number} angleDeg Contact point direction from pinion center (default -90 for bottom)
+     * @param {number} phiPinionDeg Pinion rotation angle in degrees
+     */
+    function calculateInternalMeshing(m, zPinion, zInternal, angleDeg, phiPinionDeg) {
+        var angleRad = ((angleDeg !== undefined) ? angleDeg : -90.0) * (Math.PI / 180.0);
+        var phiPinion = (phiPinionDeg || 0) * (Math.PI / 180.0);
+
+        var rp1_mm = (m * zPinion) / 2.0;
+        var rp2_mm = (m * zInternal) / 2.0;
+        var a_center_mm = rp2_mm - rp1_mm;
+
+        var rp1_pt = rp1_mm * MM_TO_PT;
+        var rp2_pt = rp2_mm * MM_TO_PT;
+        var a_center_pt = a_center_mm * MM_TO_PT;
+
+        // Pinion center is at (0, 0)
+        // Contact point C is at distance rp1 along angleRad:
+        var contactPtX = rp1_pt * Math.cos(angleRad);
+        var contactPtY = rp1_pt * Math.sin(angleRad);
+
+        // Internal gear center is at distance (rp2 - rp1) in the opposite direction (-angleRad)
+        // C = O_pinion + rp1 * u = O_internal + rp2 * u
+        // O_internal = C - rp2 * u = O_pinion + (rp1 - rp2) * u = O_pinion - a_center * u
+        var internalCenterX = -a_center_pt * Math.cos(angleRad);
+        var internalCenterY = -a_center_pt * Math.sin(angleRad);
+
+        // Rotation phase alignment:
+        // Nearest tooth space on pinion and nearest tooth on internal gear relative to contact angle:
+        var tau1 = (2.0 * Math.PI) / zPinion;
+        var tau2 = (2.0 * Math.PI) / zInternal;
+
+        var phase1 = (angleRad / tau1) - 0.5;
+        var k1 = Math.round(phase1);
+        var delta1 = (k1 + 0.5) * tau1 - angleRad;
+
+        var phase2 = angleRad / tau2;
+        var k2 = Math.round(phase2);
+        var delta2 = k2 * tau2 - angleRad;
+
+        // Kinematic relation: same rotational direction!
+        var phi2 = (phiPinion + delta1) * (zPinion / zInternal) - delta2;
+
+        return {
+            centerDistanceMm: a_center_mm,
+            centerDistancePt: a_center_pt,
+            contactPointX: contactPtX,
+            contactPointY: contactPtY,
+            pinionCenterX: 0,
+            pinionCenterY: 0,
+            internalCenterX: internalCenterX,
+            internalCenterY: internalCenterY,
+            pinionRotationDeg: phiPinion * (180.0 / Math.PI),
+            internalRotationDeg: phi2 * (180.0 / Math.PI)
+        };
+    }
+
+    /**
+     * Calculate 3K Paradoxical Planetary Gear System (differential planetary gear).
+     * Solves required profile shift xr2 for Ring 2 to strictly equal center distance a.
+     * 
+     * @param {Object} params
+     *   m: Module (mm)
+     *   zs: Sun tooth count
+     *   zp: Common planet tooth count
+     *   zr1: Fixed ring gear tooth count (must equal zs + 2*zp)
+     *   zr2: Output ring gear tooth count (e.g. zr1 - 1 or zr1 + 1)
+     *   alphaDeg: Base pressure angle (default 20.0)
+     *   numPlanets: Number of planets (default 3)
+     *   backlash: Backlash (default 0.0)
+     *   rimThickness: Ring rim thickness (default 3*m)
+     */
+    function calculateParadoxicalPlanetary(params) {
+        var m = params.m || 2.0;
+        var zs = params.zs || 12;
+        var zp = params.zp || 18;
+        var zr1 = params.zr1 || (zs + 2 * zp);
+        var zr2 = (params.zr2 !== undefined) ? params.zr2 : (zr1 - 1);
+        var alphaDeg = (params.alphaDeg !== undefined) ? params.alphaDeg : 20.0;
+        var alpha = alphaDeg * (Math.PI / 180.0);
+        var numPlanets = params.numPlanets || 3;
+        var backlash = params.backlash || 0.0;
+        var rimThickness = (params.rimThickness !== undefined) ? params.rimThickness : (3.0 * m);
+
+        // 1. Concentricity validation
+        if (zr1 !== (zs + 2 * zp)) {
+            throw new Error("Concentricity error: zr1 must equal zs + 2*zp (" + (zs + 2 * zp) + ")");
+        }
+
+        // Common center distance (mm)
+        var a_center_mm = (m * (zs + zp)) / 2.0;
+        var a_center_pt = a_center_mm * MM_TO_PT;
+
+        // 2. Reduction ratio: i = zr2 / (zr2 - zr1)
+        var deltaZ = zr2 - zr1;
+        var reductionRatio = (deltaZ !== 0) ? (zr2 / deltaZ) : 0;
+
+        // 3. Solve profile shift for Ring 2
+        var a0_2 = (m * (zr2 - zp)) / 2.0;
+        var cos_aw2 = (a0_2 / a_center_mm) * Math.cos(alpha);
+
+        if (cos_aw2 <= 0.0 || cos_aw2 > 1.0) {
+            throw new Error("Geometric impossibility: cos(alpha_w2) = " + cos_aw2 + " > 1. Cannot mesh common planet zp=" + zp + " with zr2=" + zr2 + " at a=" + a_center_mm + "mm");
+        }
+
+        var alpha_w2 = Math.acos(cos_aw2);
+        var inv_a = inv(alpha);
+        var inv_aw2 = inv(alpha_w2);
+
+        // Profile shift difference (xr2 - xp) with xp = 0:
+        var xr2 = (zr2 - zp) * (inv_aw2 - inv_a) / (2.0 * Math.tan(alpha));
+
+        // 4. Generate gear geometries
+        var sunData = calculateSpurGear({
+            m: m,
+            z: zs,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            shaftDiameter: 5.0,
+            pathQuality: "bezier_recommended"
+        });
+
+        var planetData = calculateSpurGear({
+            m: m,
+            z: zp,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            shaftDiameter: 4.0,
+            pathQuality: "bezier_recommended"
+        });
+
+        var ring1Data = calculateInternalGear({
+            m: m,
+            z: zr1,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            rimThickness: rimThickness,
+            pathQuality: "bezier_recommended"
+        });
+
+        var ring2Data = calculateInternalGear({
+            m: m,
+            z: zr2,
+            x: xr2,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            rimThickness: rimThickness,
+            pathQuality: "bezier_recommended"
+        });
+
+        // 5. Planet positions and rotations
+        var planets = [];
+        var planetSpacingDeg = 360.0 / numPlanets;
+
+        // Assembly validation for identical common planets:
+        // To mesh simultaneously with both rings, deltaZ must be a multiple of numPlanets
+        var isMultiPlanetValid = (Math.abs(deltaZ) % numPlanets === 0);
+
+        for (var i = 0; i < numPlanets; i++) {
+            var orbitDeg = i * planetSpacingDeg;
+            var orbitRad = orbitDeg * (Math.PI / 180.0);
+
+            var px = a_center_pt * Math.cos(orbitRad);
+            var py = a_center_pt * Math.sin(orbitRad);
+
+            // Planet rotation phase:
+            // Aligns tooth space with Sun at (orbitDeg + 180) and tooth space with Ring at orbitDeg:
+            var phiPlanetDeg = orbitDeg - (180.0 / zp);
+
+            planets.push({
+                index: i,
+                orbitDeg: orbitDeg,
+                centerX: px,
+                centerY: py,
+                rotationDeg: phiPlanetDeg
+            });
+        }
+
+        return {
+            m: m,
+            zs: zs,
+            zp: zp,
+            zr1: zr1,
+            zr2: zr2,
+            deltaZ: deltaZ,
+            isMultiPlanetValid: isMultiPlanetValid,
+            reductionRatio: reductionRatio,
+            centerDistanceMm: a_center_mm,
+            centerDistancePt: a_center_pt,
+            alphaDeg: alphaDeg,
+            alpha_w2_deg: alpha_w2 * (180.0 / Math.PI),
+            xr2: xr2,
+            sunData: sunData,
+            planetData: planetData,
+            ring1Data: ring1Data,
+            ring2Data: ring2Data,
+            planets: planets
+        };
+    }
+
+    /**
+     * Calculate Standard 2K-H Planetary Gear System (Sun, N Planets, 1 Ring Gear).
+     * 
+     * @param {Object} params
+     *   m: Module (mm)
+     *   zs: Sun tooth count
+     *   zp: Planet tooth count
+     *   zr: Ring gear tooth count (default zs + 2*zp)
+     *   alphaDeg: Base pressure angle (default 20.0)
+     *   numPlanets: Number of planets (default 3)
+     *   backlash: Backlash (default 0.0)
+     *   rimThickness: Ring rim thickness (default 3*m)
+     *   pathQuality: Bezier path quality (default "bezier_recommended")
+     */
+    function calculateStandardPlanetary(params) {
+        var m = params.m || 2.0;
+        var zs = params.zs || 18;
+        var zp = params.zp || 18;
+        var zr = params.zr || (zs + 2 * zp);
+        var alphaDeg = (params.alphaDeg !== undefined) ? params.alphaDeg : 20.0;
+        var numPlanets = params.numPlanets || 3;
+        var backlash = params.backlash || 0.0;
+        var rimThickness = (params.rimThickness !== undefined) ? params.rimThickness : (3.0 * m);
+        var pathQuality = params.pathQuality || "bezier_recommended";
+
+        // Concentricity validation
+        if (zr !== (zs + 2 * zp)) {
+            throw new Error("Concentricity error: zr (" + zr + ") must equal zs + 2*zp (" + (zs + 2 * zp) + ")");
+        }
+
+        // Assembly validation
+        var isAssemblyValid = ((zs + zr) % numPlanets === 0);
+
+        var a_center_mm = (m * (zs + zp)) / 2.0;
+        var a_center_pt = a_center_mm * MM_TO_PT;
+
+        // Reduction ratio (Fixed Ring): i = 1 + zr / zs
+        var reductionRatio = 1.0 + (zr / zs);
+
+        // Generate gears
+        var sunData = calculateSpurGear({
+            m: m,
+            z: zs,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            shaftDiameter: 5.0,
+            pathQuality: pathQuality
+        });
+
+        var planetData = calculateSpurGear({
+            m: m,
+            z: zp,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            shaftDiameter: 4.0,
+            pathQuality: pathQuality
+        });
+
+        var ringData = calculateInternalGear({
+            m: m,
+            z: zr,
+            x: 0.0,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            rimThickness: rimThickness,
+            pathQuality: pathQuality
+        });
+
+        // Planets array
+        var planets = [];
+        var planetSpacingDeg = 360.0 / numPlanets;
+
+        for (var i = 0; i < numPlanets; i++) {
+            var orbitDeg = i * planetSpacingDeg;
+            var orbitRad = orbitDeg * (Math.PI / 180.0);
+
+            var px = a_center_pt * Math.cos(orbitRad);
+            var py = a_center_pt * Math.sin(orbitRad);
+
+            // Phase alignment
+            var phiPlanetDeg = orbitDeg - (180.0 / zp);
+
+            planets.push({
+                index: i,
+                orbitDeg: orbitDeg,
+                centerX: px,
+                centerY: py,
+                rotationDeg: phiPlanetDeg
+            });
+        }
+
+        // Adjacent planets clearance check
+        var dap = m * (zp + 2.0);
+        var planetDistance = 2.0 * a_center_mm * Math.sin(Math.PI / numPlanets);
+        var planetClearance = planetDistance - dap;
+
+        return {
+            m: m,
+            zs: zs,
+            zp: zp,
+            zr: zr,
+            numPlanets: numPlanets,
+            isAssemblyValid: isAssemblyValid,
+            reductionRatio: reductionRatio,
+            centerDistanceMm: a_center_mm,
+            centerDistancePt: a_center_pt,
+            alphaDeg: alphaDeg,
+            planetClearanceMm: planetClearance,
+            sunData: sunData,
+            planetData: planetData,
+            ringData: ringData,
+            planets: planets
+        };
+    }
+
+    /**
+     * Design Solver: Automatically search and rank feasible tooth combinations for 2K-H Planetary Gear System.
+     * Supports flexible constraints: targetRatio, fixed tooth counts (fixedZs, fixedZp, fixedZr),
+     * planet counts (numPlanets), and operation modes (ring_fixed, sun_fixed, carrier_fixed).
+     * 
+     * @param {Object} specs
+     *   mode: "ring_fixed" | "sun_fixed" | "carrier_fixed" (default "ring_fixed")
+     *   targetRatio: Target reduction ratio (optional)
+     *   m: Module (mm, default 2.0)
+     *   numPlanets: Number of planets (optional, default [2, 3, 4, 5, 6])
+     *   alphaDeg: Pressure angle (default 20.0)
+     *   tol: Ratio tolerance (default 0.10)
+     *   fixedZs: Fixed sun teeth (optional)
+     *   fixedZp: Fixed planet teeth (optional)
+     *   fixedZr: Fixed ring teeth (optional)
+     *   zsMin, zsMax, zpMin, zpMax: Search ranges
+     * @returns {Array} List of candidate solution objects
+     */
+
+    /**
+     * Replaces template tokens like {id}, {z}, {m}, {toothType}, {kind}, etc. with context values.
+     * 
+     * @param {String} template 
+     * @param {Object} ctx 
+     * @returns {String}
+     */
+    function formatName(template, ctx) {
+        if (!template) return "";
+        ctx = ctx || {};
+
+        // Auto-populate tooth type tokens if not explicitly provided
+        if (!ctx.toothType) {
+            var gType = (ctx.gearType || ctx.type || "").toUpperCase();
+            if (gType === "INTERNAL") {
+                ctx.toothType = "Internal";
+                ctx.kind = ctx.kind || "Int";
+                ctx.form = ctx.form || "Int";
+                ctx.toothTypeJP = ctx.toothTypeJP || "\u5185\u6b6f";
+            } else if (gType === "RACK") {
+                ctx.toothType = "Rack";
+                ctx.kind = ctx.kind || "Rck";
+                ctx.form = ctx.form || "Rck";
+                ctx.toothTypeJP = ctx.toothTypeJP || "\u30e9\u30c3\u30af";
+            } else {
+                ctx.toothType = "External";
+                ctx.kind = ctx.kind || "Ext";
+                ctx.form = ctx.form || "Ext";
+                ctx.toothTypeJP = ctx.toothTypeJP || "\u5916\u6b6f";
+            }
+        }
+
+        return template.replace(/\{([a-zA-Z0-9_]+)\}/g, function (match, key) {
+            if (ctx.hasOwnProperty(key)) {
+                var val = ctx[key];
+                if (typeof val === "number") {
+                    if (key === "m" || key === "shaft" || key === "ratio") {
+                        return val.toFixed(1).replace(/\.0$/, "");
+                    } else if (key === "d" || key === "pcd" || key === "da") {
+                        return val.toFixed(1);
+                    }
+                }
+                return (val !== undefined && val !== null) ? String(val) : "";
+            }
+            return match;
+        });
+    }
+
+    var NAMING_PRESETS = {
+        standard: {
+            mainLayer: "{train}",
+            subLayer: "{train}_{layer}",
+            dwgLayer: "{train}_dwg",
+            gearGroup: "{id}_{kind}_z{z}"
+        },
+        engineering: {
+            mainLayer: "Train_{train}_m{m}",
+            subLayer: "{train}_L{layer}",
+            dwgLayer: "DWG_{train}_Skeleton",
+            gearGroup: "{id}_{toothType}_m{m}_z{z}_d{d}_h{shaft}"
+        },
+        cam: {
+            mainLayer: "CUT_{train}",
+            subLayer: "{train}_L{layer}",
+            dwgLayer: "REG_{train}",
+            gearGroup: "{train}_L{layer}_{kind}_{id}_z{z}"
+        }
     };
-})();
+
+
+    exports.MM_TO_PT = MM_TO_PT;
+    exports.PT_TO_MM = PT_TO_MM;
+    exports.inv = inv;
+    exports.invInv = invInv;
+    exports.getUndercutLimit = getUndercutLimit;
+    exports.JIS_B_1301_TABLE = JIS_B_1301_TABLE;
+    exports.getJISKeywayDimensions = getJISKeywayDimensions;
+    exports.getDCutDepth = getDCutDepth;
+    exports.normalizeShaftType = normalizeShaftType;
+    exports.calculateShaftHoleGeometry = calculateShaftHoleGeometry;
+    exports.calculateAlignmentPinHoles = calculateAlignmentPinHoles;
+    exports.calculateSpurGear = calculateSpurGear;
+    exports.calculateMeshingPair = calculateMeshingPair;
+    exports.calculateRack = calculateRack;
+    exports.calculateRackMeshing = calculateRackMeshing;
+    exports.calculateInternalGear = calculateInternalGear;
+    exports.calculateInternalMeshing = calculateInternalMeshing;
+    exports.calculateParadoxicalPlanetary = calculateParadoxicalPlanetary;
+    exports.calculateStandardPlanetary = calculateStandardPlanetary;
+    exports.formatName = formatName;
+    exports.NAMING_PRESETS = NAMING_PRESETS;
+})(InvoluteMath);
+
+/**
+ * MechanismSolvers.jsxinc - Planetary & Paradoxical Inverse Solvers
+ * Part of GearDrawer Architecture (Hori et al. 1994 High-efficiency Paradoxical Design)
+ */
+
+var InvoluteMath = InvoluteMath || {};
+
+(function (exports) {
+// Global conversion constants & helpers
+var MM_TO_PT = 72.0 / 25.4;
+var PT_TO_MM = 25.4 / 72.0;
+
+function logTrace(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.log(category, msg, data);
+    }
+}
+
+function logWarn(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.warn(category, msg, data);
+    }
+}
+
+    function solveStandardPlanetary(specs) {
+        specs = specs || {};
+        var mode = specs.mode || "ring_fixed"; // "ring_fixed", "sun_fixed", "carrier_fixed"
+        var targetRatio = (specs.targetRatio !== undefined && specs.targetRatio !== null && !isNaN(specs.targetRatio) && specs.targetRatio !== 0) ? specs.targetRatio : null;
+        var tol = (specs.tol !== undefined) ? specs.tol : 0.10;
+        var m = specs.m || 2.0;
+        var alphaDeg = specs.alphaDeg || 20.0;
+
+        var numPlanetsList = specs.numPlanets ? [specs.numPlanets] : [2, 3, 4, 5, 6];
+
+        var fixedZs = specs.fixedZs || null;
+        var fixedZp = specs.fixedZp || null;
+        var fixedZr = specs.fixedZr || null;
+
+        var zsMin = fixedZs ? fixedZs : (specs.zsMin || 12);
+        var zsMax = fixedZs ? fixedZs : (specs.zsMax || 60);
+
+        var candidates = [];
+
+        for (var zs = zsMin; zs <= zsMax; zs++) {
+            var zpMin = fixedZp ? fixedZp : 12;
+            var zpMax = fixedZp ? fixedZp : 60;
+
+            for (var zp = zpMin; zp <= zpMax; zp++) {
+                var zr = zs + 2 * zp; // Concentricity condition
+                if (fixedZr && zr !== fixedZr) continue;
+
+                for (var nIdx = 0; nIdx < numPlanetsList.length; nIdx++) {
+                    var N = numPlanetsList[nIdx];
+
+                    // Assembly condition: (zs + zr) % N === 0
+                    if ((zs + zr) % N !== 0) continue;
+
+                    // Ratio calculation according to mode
+                    var ratio = 0;
+                    var modeName = "";
+                    if (mode === "sun_fixed") {
+                        ratio = 1.0 + (zs / zr); // Ring in, Carrier out
+                        modeName = "太陽固定";
+                    } else if (mode === "carrier_fixed") {
+                        ratio = zr / zs; // Sun in, Ring out (reversed)
+                        modeName = "キャリア固定";
+                    } else {
+                        ratio = 1.0 + (zr / zs); // Sun in, Carrier out
+                        modeName = "内歯車固定";
+                    }
+
+                    // If targetRatio specified, filter by tol
+                    var ratioErr = 0;
+                    if (targetRatio !== null && targetRatio > 0) {
+                        ratioErr = Math.abs(ratio - targetRatio) / targetRatio;
+                        if (ratioErr > tol) continue;
+                    }
+
+                    // Adjacent planet clearance
+                    var a = (m * (zs + zp)) / 2.0;
+                    var dap = m * (zp + 2.0);
+                    var pDist = 2.0 * a * Math.sin(Math.PI / N);
+                    var clearance = pDist - dap;
+                    if (clearance < 0.5) continue; // Min 0.5mm clearance
+
+                    // Internal gear trochoid clearance
+                    if (zr - zp < 8) continue;
+
+                    var outerDiam = m * (zr + 6.0);
+
+                    candidates.push({
+                        mode: mode,
+                        zs: zs,
+                        zp: zp,
+                        zr: zr,
+                        numPlanets: N,
+                        ratio: Math.round(ratio * 1000) / 1000,
+                        ratioError: Math.round(ratioErr * 10000) / 100,
+                        centerDistanceMm: Math.round(a * 100) / 100,
+                        clearanceMm: Math.round(clearance * 100) / 100,
+                        outerDiameterMm: Math.round(outerDiam * 10) / 10,
+                        label: "S:" + zs + " P:" + zp + " R:" + zr + " (N=" + N + ", i=" + ratio.toFixed(2) + (targetRatio ? (", Err=" + (ratioErr * 100).toFixed(1) + "%") : "") + ", OD=" + outerDiam.toFixed(0) + "mm)"
+                    });
+                }
+            }
+        }
+
+        candidates.sort(function (a, b) {
+            if (targetRatio !== null) {
+                return (a.ratioError - b.ratioError) || (a.outerDiameterMm - b.outerDiameterMm);
+            }
+            return (a.ratio - b.ratio) || (a.outerDiameterMm - b.outerDiameterMm);
+        });
+
+        return candidates;
+    }
+
+    /**
+     * Design Solver: Automatically search and rank feasible tooth combinations for 3K Paradoxical Planetary Gear System.
+     * Supports flexible constraints: targetRatio, fixed teeth (fixedZs, fixedZp, fixedZr1, fixedZr2),
+     * planet counts (numPlanets).
+     * 
+     * @param {Object} specs
+     *   targetRatio: Target reduction ratio (optional, e.g. 50.0 to 400.0)
+     *   m: Module (mm, default 2.0)
+     *   numPlanets: Number of planets (optional, default [2, 3, 4])
+     *   alphaDeg: Pressure angle (default 20.0)
+     *   tol: Ratio tolerance (default 0.20)
+     *   fixedZs, fixedZp, fixedZr1, fixedZr2: Optional fixed teeth constraints
+     *   zsMin, zsMax, zpMin, zpMax: Search ranges
+     * @returns {Array} List of candidate solution objects
+     */
+    /**
+     * Solves gear tooth count combinations for 3K paradoxical planetary gear train.
+     * Implements Hori et al. (1994) / InvoluteGearSoft algorithm for maximum efficiency and positive profile shift:
+     *   - Sun (Zs) and Output Ring (Zr2) are multiples of number of planets (N)
+     *   - Ideal pinion: Z2_ideal = (Zr2 - Zs) / 2
+     *   - Adopted pinion: Zp = Z2_ideal - 1 (intentional tooth reduction for all-positive shift)
+     *   - Fixed Ring: Zr1 = Zr2 - DeltaZ, where DeltaZ is a multiple of N (+/- N, +/- 2N)
+     *   - Ratio: i = [Zr2 * (Zs + Zr1)] / [Zs * (Zr2 - Zr1)]
+     * Also supports general constraints search with specified fixed teeth or N.
+     * 
+     * @param {Object} specs
+     *   targetRatio: Target reduction ratio (optional)
+     *   numPlanets: Number of planets (optional, e.g. 2, 3, 4, 5; or array of candidates)
+     *   alphaDeg: Pressure angle (default 20.0)
+     *   tol: Ratio tolerance (default 0.25)
+     *   fixedZs, fixedZp, fixedZr1, fixedZr2: Optional fixed teeth constraints
+     *   zsMin, zsMax, zpMin, zpMax: Search ranges
+     *   preferHoriMethod: boolean (default true)
+     * @returns {Array} List of candidate solution objects
+     */
+    function solveParadoxicalPlanetary(specs) {
+        specs = specs || {};
+        var targetRatio = (specs.targetRatio !== undefined && specs.targetRatio !== null && !isNaN(specs.targetRatio) && specs.targetRatio !== 0) ? specs.targetRatio : null;
+        var tol = (specs.tol !== undefined) ? specs.tol : 0.25;
+        var m = specs.m || 2.0;
+        var alphaDeg = specs.alphaDeg || 20.0;
+        var alpha = alphaDeg * (Math.PI / 180.0);
+        var invAlpha = Math.tan(alpha) - alpha;
+        var cosAlpha = Math.cos(alpha);
+
+        var numPlanetsList = specs.numPlanets ? [specs.numPlanets] : [2, 3, 4, 5];
+
+        var fixedZs = specs.fixedZs || null;
+        var fixedZp = specs.fixedZp || null;
+        var fixedZr1 = specs.fixedZr1 || null;
+        var fixedZr2 = specs.fixedZr2 || null;
+
+        var candidates = [];
+        var seenKeys = {};
+
+        for (var nIdx = 0; nIdx < numPlanetsList.length; nIdx++) {
+            var N = numPlanetsList[nIdx];
+            if (N < 1) continue;
+
+            // Determine search range for Zs (Sun)
+            var zsMin = fixedZs ? fixedZs : (specs.zsMin || (N * Math.max(2, Math.ceil(12 / N))));
+            var zsMax = fixedZs ? fixedZs : (specs.zsMax || 60);
+
+            // Step 1: Hori et al. (1994) positive profile shift method
+            // Sun Zs and Output Ring Zr2 are multiples of N
+            for (var zs = zsMin; zs <= zsMax; zs++) {
+                if (!fixedZs && (zs % N !== 0)) continue; // Must be multiple of N in Hori method
+
+                // Loop over possible Z2_ideal
+                var z2IdealMin = fixedZp ? (fixedZp + 1) : 10;
+                var z2IdealMax = fixedZp ? (fixedZp + 1) : 45;
+
+                for (var z2Ideal = z2IdealMin; z2Ideal <= z2IdealMax; z2Ideal++) {
+                    var zp = fixedZp ? fixedZp : (z2Ideal - 1); // 1 tooth reduced
+                    if (zp < 9) continue; // Minimum feasible pinion teeth
+
+                    var zr2_ideal = zs + 2 * z2Ideal;
+                    if (!fixedZr2 && (zr2_ideal % N !== 0)) continue; // Must be multiple of N
+
+                    // Allowed DeltaZ values: multiples of N (+/- N, +/- 2N)
+                    var deltaZList = (N === 1) ? [-1, 1, -2, 2] : [-N, N, -2 * N, 2 * N];
+
+                    for (var dIdx = 0; dIdx < deltaZList.length; dIdx++) {
+                        var deltaZ = deltaZList[dIdx];
+                        var zr2 = fixedZr2 ? fixedZr2 : zr2_ideal;
+                        var zr1 = zr2 - deltaZ;
+
+                        if (fixedZr1 && zr1 !== fixedZr1) continue;
+                        if (fixedZr2 && zr2 !== fixedZr2) continue;
+                        if (zr1 <= zp + 6 || zr2 <= zp + 6) continue; // Interference margin
+
+                        // Assembly condition check
+                        if ((zs + zr1) % N !== 0) continue;
+                        if ((zs + zr2) % N !== 0) continue;
+
+                        // Calculate center distance based on sun & planet with positive profile shift
+                        // Standard center distance for sun-planet
+                        var a0_sp = (m * (zs + zp)) / 2.0;
+                        // Center distance given by ideal geometry:
+                        var a_oper = (m * (zs + z2Ideal)) / 2.0; // Nominal operating center distance
+
+                        // Operating pressure angle between Sun and Pinion
+                        var cosAw_sp = (a0_sp / a_oper) * cosAlpha;
+                        if (cosAw_sp <= 0.0 || cosAw_sp >= 1.0) continue;
+                        var aw_sp = Math.acos(cosAw_sp);
+                        var invAw_sp = Math.tan(aw_sp) - aw_sp;
+                        var sumX_sp = ((zs + zp) * (invAw_sp - invAlpha)) / (2.0 * Math.tan(alpha));
+
+                        // Operating conditions for Pinion and Ring 1 (Fixed)
+                        var a0_p1 = (m * (zr1 - zp)) / 2.0;
+                        var cosAw_p1 = (a0_p1 / a_oper) * cosAlpha;
+                        if (cosAw_p1 <= 0.0 || cosAw_p1 >= 1.0) continue;
+                        var aw_p1 = Math.acos(cosAw_p1);
+                        var invAw_p1 = Math.tan(aw_p1) - aw_p1;
+                        var diffX_p1 = ((zr1 - zp) * (invAw_p1 - invAlpha)) / (2.0 * Math.tan(alpha));
+
+                        // Operating conditions for Pinion and Ring 2 (Output)
+                        var a0_p2 = (m * (zr2 - zp)) / 2.0;
+                        var cosAw_p2 = (a0_p2 / a_oper) * cosAlpha;
+                        if (cosAw_p2 <= 0.0 || cosAw_p2 >= 1.0) continue;
+                        var aw_p2 = Math.acos(cosAw_p2);
+                        if (aw_p2 > 35.0 * (Math.PI / 180.0)) continue;
+                        var invAw_p2 = Math.tan(aw_p2) - aw_p2;
+                        var diffX_p2 = ((zr2 - zp) * (invAw_p2 - invAlpha)) / (2.0 * Math.tan(alpha));
+                        if (Math.abs(diffX_p2) > 2.2) continue;
+
+                        // Pinion outer diameter and adjacent planet clearance
+                        var dap = m * (zp + 2.0);
+                        if (N > 1) {
+                            var pDist = 2.0 * a_oper * Math.sin(Math.PI / N);
+                            if (pDist - dap < 0.5) continue; // Clearance check
+                        }
+
+                        // Reduction ratio: i = [Zr2 * (Zs + Zr1)] / [Zs * (Zr2 - Zr1)]
+                        var actualRatio = (zr2 * (zs + zr1)) / (zs * deltaZ);
+                        var ratioErr = 0;
+                        if (targetRatio !== null) {
+                            ratioErr = Math.abs(actualRatio - targetRatio) / Math.abs(targetRatio);
+                            if (ratioErr > tol) continue;
+                        }
+
+                        // Efficiency estimate (Hori et al. formulation with high-efficiency positive shift)
+                        var mu = 0.055; // Lower friction coefficient due to positive shift and lower sliding velocity
+                        var eff = (1.0 - mu * Math.PI * (1.0 / zs + 1.0 / zp)) / (1.0 + Math.abs(zr1 / deltaZ) * mu * Math.PI * (1.0 / zp - 1.0 / zr2));
+                        eff = Math.max(0.15, Math.min(0.95, eff));
+
+                        var key = zs + "_" + zp + "_" + zr1 + "_" + zr2 + "_" + N;
+                        if (seenKeys[key]) continue;
+                        seenKeys[key] = true;
+
+                        var outerDiam = m * (Math.max(zr1, zr2) + 6.0);
+
+                        candidates.push({
+                            zs: zs,
+                            zp: zp,
+                            zr1: zr1,
+                            zr2: zr2,
+                            numPlanets: N,
+                            deltaZ: deltaZ,
+                            isHoriMethod: (zp === z2Ideal - 1),
+                            xr2: Math.round(diffX_p2 * 1000) / 1000,
+                            sumX_sp: Math.round(sumX_sp * 1000) / 1000,
+                            aw2Deg: Math.round(aw_p2 * (180.0 / Math.PI) * 10) / 10,
+                            ratio: Math.round(actualRatio * 10) / 10,
+                            ratioError: Math.round(ratioErr * 10000) / 100,
+                            centerDistanceMm: Math.round(a_oper * 100) / 100,
+                            outerDiameterMm: Math.round(outerDiam * 10) / 10,
+                            efficiencyEst: Math.round(eff * 100),
+                            label: "S:" + zs + " P:" + zp + " R1:" + zr1 + " R2:" + zr2 + " (N=" + N + ", i=" + actualRatio.toFixed(1) + ", \u03b7\u2248" + Math.round(eff * 100) + "%" + (zp === z2Ideal - 1 ? ", 堀・正転位" : "") + ")"
+                        });
+                    }
+                }
+            }
+
+            // Step 2: Fallback general search (standard meshing with Zr1 = Zs + 2*Zp)
+            for (var zsGen = (fixedZs || 14); zsGen <= (fixedZs || 50); zsGen++) {
+                var zpGenMin = fixedZp || 12;
+                var zpGenMax = fixedZp || 40;
+                for (var zpGen = zpGenMin; zpGen <= zpGenMax; zpGen++) {
+                    var zr1Gen = zsGen + 2 * zpGen;
+                    if (fixedZr1 && zr1Gen !== fixedZr1) continue;
+                    if ((zsGen + zr1Gen) % N !== 0) continue;
+
+                    var aGen = (m * (zsGen + zpGen)) / 2.0;
+                    var dapGen = m * (zpGen + 2.0);
+                    if (N > 1) {
+                        var pDistGen = 2.0 * aGen * Math.sin(Math.PI / N);
+                        if (pDistGen - dapGen < 0.5) continue;
+                    }
+
+                    var possibleDeltaZGen = (N === 1) ? [-1, 1, -2, 2] : [-N, N, -2 * N, 2 * N];
+                    for (var dgIdx = 0; dgIdx < possibleDeltaZGen.length; dgIdx++) {
+                        var dZGen = possibleDeltaZGen[dgIdx];
+                        var zr2Gen = zr1Gen + dZGen;
+                        if (fixedZr2 && zr2Gen !== fixedZr2) continue;
+                        if (zr2Gen <= zpGen + 6) continue;
+                        if ((zsGen + zr2Gen) % N !== 0) continue;
+
+                        var keyGen = zsGen + "_" + zpGen + "_" + zr1Gen + "_" + zr2Gen + "_" + N;
+                        if (seenKeys[keyGen]) continue;
+                        seenKeys[keyGen] = true;
+
+                        var actualRatioGen = ((zsGen + zr1Gen) * zr2Gen) / (zsGen * dZGen);
+                        var ratioErrGen = 0;
+                        if (targetRatio !== null) {
+                            ratioErrGen = Math.abs(actualRatioGen - targetRatio) / Math.abs(targetRatio);
+                            if (ratioErrGen > tol) continue;
+                        }
+
+                        var a0_2Gen = (m * (zr2Gen - zpGen)) / 2.0;
+                        var cosAw2Gen = (a0_2Gen / aGen) * cosAlpha;
+                        if (cosAw2Gen <= 0.0 || cosAw2Gen >= 1.0) continue;
+                        var aw2Gen = Math.acos(cosAw2Gen);
+                        if (aw2Gen > 35.0 * (Math.PI / 180.0)) continue;
+                        var invAw2Gen = Math.tan(aw2Gen) - aw2Gen;
+                        var xr2Gen = (zr2Gen - zpGen) * (invAw2Gen - invAlpha) / (2.0 * Math.tan(alpha));
+                        if (Math.abs(xr2Gen) > 2.2) continue;
+
+                        var outerDiamGen = m * (Math.max(zr1Gen, zr2Gen) + 6.0);
+                        var muGen = 0.07;
+                        var effGen = (1.0 - muGen * Math.PI * (1.0 / zsGen + 1.0 / zpGen)) / (1.0 + Math.abs(zr1Gen / dZGen) * muGen * Math.PI * (1.0 / zpGen - 1.0 / zr2Gen));
+                        effGen = Math.max(0.1, Math.min(0.9, effGen));
+
+                        candidates.push({
+                            zs: zsGen,
+                            zp: zpGen,
+                            zr1: zr1Gen,
+                            zr2: zr2Gen,
+                            numPlanets: N,
+                            deltaZ: dZGen,
+                            isHoriMethod: false,
+                            xr2: Math.round(xr2Gen * 1000) / 1000,
+                            sumX_sp: 0,
+                            aw2Deg: Math.round(aw2Gen * (180.0 / Math.PI) * 10) / 10,
+                            ratio: Math.round(actualRatioGen * 10) / 10,
+                            ratioError: Math.round(ratioErrGen * 10000) / 100,
+                            centerDistanceMm: Math.round(aGen * 100) / 100,
+                            outerDiameterMm: Math.round(outerDiamGen * 10) / 10,
+                            efficiencyEst: Math.round(effGen * 100),
+                            label: "S:" + zsGen + " P:" + zpGen + " R1:" + zr1Gen + " R2:" + zr2Gen + " (N=" + N + ", i=" + actualRatioGen.toFixed(1) + ", xr2=" + xr2Gen.toFixed(2) + ", \u03b7\u2248" + Math.round(effGen * 100) + "%)"
+                        });
+                    }
+                }
+            }
+        }
+
+        candidates.sort(function (a, b) {
+            // Prioritize Hori method
+            if (a.isHoriMethod !== b.isHoriMethod) {
+                return a.isHoriMethod ? -1 : 1;
+            }
+            if (targetRatio !== null) {
+                return (a.ratioError - b.ratioError) || (b.efficiencyEst - a.efficiencyEst);
+            }
+            return (Math.abs(a.ratio) - Math.abs(b.ratio)) || (b.efficiencyEst - a.efficiencyEst);
+        });
+
+        return candidates;
+    }
+
+    /**
+     * Parses an Illustrator circle geometry (diameter and center) into gear tooth count and profile shift.
+     * 
+     * @param {Object} params
+     *   diameterPt: Diameter in points
+     *   centerPt: Center [cx, cy] in points
+     *   m: Module in mm
+     *   mode: "pitch" (meshing pitch circle) | "tip" (max outer diameter envelope)
+     *   keepExactSize: boolean (if true in pitch mode, applies profile shift x to match exact diameter)
+     */
+
+    exports.solveStandardPlanetary = solveStandardPlanetary;
+    exports.solveParadoxicalPlanetary = solveParadoxicalPlanetary;
+})(InvoluteMath);
+
+/**
+ * TopologySolver.jsxinc - Circle Object Geometry & Multi-layer Topology Analysis
+ * Part of GearDrawer Architecture
+ */
+
+var InvoluteMath = InvoluteMath || {};
+
+(function (exports) {
+// Global conversion constants & helpers
+var MM_TO_PT = 72.0 / 25.4;
+var PT_TO_MM = 25.4 / 72.0;
+
+function logTrace(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.log(category, msg, data);
+    }
+}
+
+function logWarn(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.warn(category, msg, data);
+    }
+}
+
+    function parseCircleGeometry(params) {
+        var PT_TO_MM = 25.4 / 72.0;
+        var diamMm = params.diameterPt * PT_TO_MM;
+        var m = params.m || 2.0;
+        var mode = params.mode || "pitch";
+        var keepExact = (params.keepExactSize !== undefined) ? params.keepExactSize : false;
+
+        var centerMm = [
+            params.centerPt[0] * PT_TO_MM,
+            params.centerPt[1] * PT_TO_MM
+        ];
+
+        var z = 18;
+        var x = 0.0;
+        var nominalDiamMm = diamMm;
+
+        if (mode === "pitch") {
+            // Pitch circle d = m * z
+            var idealZ = diamMm / m;
+            z = Math.max(3, Math.round(idealZ));
+            if (keepExact) {
+                // Profile shift x to keep center distance / pitch diameter exact: d_eff = m*(z + 2*x)
+                x = (diamMm / m - z) / 2.0;
+                nominalDiamMm = diamMm;
+            } else {
+                nominalDiamMm = m * z;
+            }
+        } else if (mode === "tip") {
+            // Tip circle da = m * (z + 2)
+            var maxZ = Math.floor(diamMm / m - 2.0);
+            z = Math.max(3, maxZ);
+            x = 0.0;
+            nominalDiamMm = m * (z + 2.0);
+        }
+
+        return {
+            z: z,
+            x: Math.round(x * 1000) / 1000,
+            module: m,
+            mode: mode,
+            targetDiameterMm: diamMm,
+            actualDiameterMm: nominalDiamMm,
+            centerMm: centerMm,
+            centerPt: params.centerPt
+        };
+    }
+
+    /**
+     * Solves required profile shift x (equal distribution or shift sum)
+     * to mesh a pair of gears at an arbitrary exact center distance aw.
+     * Based on JIS B 1701-1 / ISO 21771 involute gear standards.
+     * 
+     * @param {Object} params
+     *   m: Module in mm
+     *   z1: Tooth count gear 1 (Pinion)
+     *   z2: Tooth count gear 2 (Gear / Internal Ring)
+     *   alphaDeg: Base pressure angle (default 20.0)
+     *   targetCenterDistanceMm: Target center distance aw in mm
+     *   isInternal: boolean (default false, true for external pinion & internal ring)
+     * @returns {Object}
+     *   - possible: boolean
+     *   - alphaWDeg: Operating pressure angle in degrees
+     *   - xSum: Total profile shift sum (x1 + x2 for spur, x2 - x1 for internal)
+     *   - x1: Profile shift for gear 1
+     *   - x2: Profile shift for gear 2
+     *   - warning: String (if any)
+     */
+    function solveProfileShiftForDistance(params) {
+        var m = params.m || 2.0;
+        var z1 = params.z1 || 18;
+        var z2 = params.z2 || 36;
+        var alphaDeg = (params.alphaDeg !== undefined) ? params.alphaDeg : 20.0;
+        var alpha = alphaDeg * (Math.PI / 180.0);
+        var aw = params.targetCenterDistanceMm;
+        var isInternal = params.isInternal || false;
+
+        var aStd = isInternal ? (m * (z2 - z1) / 2.0) : (m * (z1 + z2) / 2.0);
+        if (Math.abs(aw - aStd) < 1e-6) {
+            return {
+                possible: true,
+                alphaWDeg: alphaDeg,
+                xSum: 0.0,
+                x1: 0.0,
+                x2: 0.0
+            };
+        }
+
+        // Operating pressure angle alpha_w: cos(alpha_w) = aStd * cos(alpha) / aw
+        var cosAlphaW = (aStd * Math.cos(alpha)) / aw;
+        if (cosAlphaW <= 0 || cosAlphaW > 1.0) {
+            return {
+                possible: false,
+                alphaWDeg: alphaDeg,
+                xSum: 0.0,
+                x1: 0.0,
+                x2: 0.0,
+                warning: "\u76ee\u6a19\u4e2d\u5fc3\u8ddd\u96e2 " + aw.toFixed(2) + "mm \u3067\u306f\u57fa\u790e\u5186\u5e72\u6e09\u306e\u305f\u3081\u5e7e\u4f55\u5b66\u7684\u306b\u565b\u307f\u5408\u3044\u304c\u6210\u7acb\u3057\u307e\u305b\u3093 (cos \u03b1w = " + cosAlphaW.toFixed(4) + " > 1.0)\u3002"
+            };
+        }
+
+        var alphaW = Math.acos(cosAlphaW);
+        var alphaWDeg = alphaW * (180.0 / Math.PI);
+
+        if (alphaWDeg > 45.0) {
+            return {
+                possible: false,
+                alphaWDeg: alphaWDeg,
+                xSum: 0.0,
+                x1: 0.0,
+                x2: 0.0,
+                warning: "\u76ee\u6a19\u4e2d\u5fc3\u8ddd\u96e2\u304c\u96e2\u308c\u3059\u304e\u3066\u304a\u308a\u3001\u565b\u307f\u5408\u3044\u5727\u529b\u89d2\u304c\u904e\u5927\u3067\u3059 (\u03b1w = " + alphaWDeg.toFixed(1) + "\u00b0 > 45\u00b0)\u3002"
+            };
+        }
+
+        var invAlpha = Math.tan(alpha) - alpha;
+        var invAlphaW = Math.tan(alphaW) - alphaW;
+
+        var zEffective = isInternal ? (z2 - z1) : (z1 + z2);
+        var xDelta = (zEffective / (2.0 * Math.tan(alpha))) * (invAlphaW - invAlpha);
+
+        var x1 = 0.0;
+        var x2 = 0.0;
+        if (isInternal) {
+            // Internal meshing: x2 - x1 = xDelta
+            x1 = Math.round((-xDelta / 2.0) * 1000) / 1000;
+            x2 = Math.round((xDelta / 2.0) * 1000) / 1000;
+        } else {
+            // External meshing: x1 + x2 = xDelta
+            x1 = Math.round((xDelta / 2.0) * 1000) / 1000;
+            x2 = Math.round((xDelta / 2.0) * 1000) / 1000;
+        }
+
+        return {
+            possible: true,
+            alphaWDeg: Math.round(alphaWDeg * 100) / 100,
+            xSum: Math.round(xDelta * 1000) / 1000,
+            x1: x1,
+            x2: x2
+        };
+    }
+
+    /**
+     * Parses module, pressure angle, and stage index from Illustrator layer names.
+     * e.g. "Stage1_m2.5_a20", "L2_m1.5", "Train_m3.0"
+     */
+    function parseLayerParams(layerName) {
+        if (!layerName) return null;
+        var res = {};
+        var mM = layerName.match(/(?:^|[^a-zA-Z0-9])m([0-9]+(?:\.[0-9]+)?)(?:[^a-zA-Z0-9]|$)/i);
+        if (mM) res.m = parseFloat(mM[1]);
+
+        var mA = layerName.match(/(?:^|[^a-zA-Z0-9])(?:a|alpha)([0-9]+(?:\.[0-9]+)?)(?:[^a-zA-Z0-9]|$)/i);
+        if (mA) res.alphaDeg = parseFloat(mA[1]);
+
+        // Support English and Japanese layer naming conventions:
+        // "Stage 1", "Stage1", "Layer 2", "Layer2", "L1", "S1", "レイヤー 1", "レイヤー1", "第1段", "1段", "1層"
+        var mS = layerName.match(/(?:^|[^a-zA-Z0-9])(?:stage|layer|l|s)\s*([0-9]+)(?:[^a-zA-Z0-9]|$)/i) ||
+                 layerName.match(/(?:\u30ec\u30a4\u30e4\u30fc|\u6bb5|\u5c64|\u968e)\s*([0-9]+)/i) ||
+                 layerName.match(/([0-9]+)\s*(?:\u6bb5|\u5c64|\u968e)/i);
+        if (mS) res.stageIndex = parseInt(mS[1], 10);
+
+        return res;
+    }
+
+    /**
+     * Analyzes multiple Illustrator circles to reconstruct a gear train tree topology.
+     * Evaluates pairwise center distances to identify external meshing (SPUR),
+     * internal meshing (INTERNAL), and cross-layer coaxial stepped gears (COAXIAL).
+     * Supports:
+     * - "snap_theory": Snaps center distance to theoretical integer gear distance
+     * - "exact_position": Keeps circle center coordinates 100% exact by applying profile shift x
+     * - "free": Batch independent placement without meshing constraints
+     * 
+     * @param {Array} rawCircles Array of circle objects
+     * @param {Object} options
+     */
+    function analyzeCircleTopology(rawCircles, options) {
+        options = options || {};
+        var defaultM = options.m || 2.0;
+        var defaultAlphaDeg = (options.alphaDeg !== undefined) ? options.alphaDeg : 20.0;
+        var mode = options.mode || "pitch";
+        var tol = (options.toleranceMm !== undefined) ? options.toleranceMm : 2.5;
+        var snapMode = options.snapMode || "snap_theory"; // "snap_theory" | "exact_position" | "free"
+        var allowCrossLayerMeshing = (options.allowCrossLayerMeshing === true);
+
+        if (!rawCircles || rawCircles.length === 0) {
+            logWarn("TOPOLOGY", "No circles provided for topology analysis");
+            return { nodes: [], warnings: ["\u5186\u304c\u9078\u629e\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002"] };
+        }
+
+        logTrace("TOPOLOGY", "Starting circle topology analysis", {
+            circleCount: rawCircles.length,
+            snapMode: snapMode,
+            allowCrossLayerMeshing: allowCrossLayerMeshing,
+            mode: mode,
+            toleranceMm: tol,
+            defaultM: defaultM,
+            defaultAlphaDeg: defaultAlphaDeg
+        });
+
+        var PT_TO_MM = 25.4 / 72.0;
+        var parsed = [];
+
+        for (var i = 0; i < rawCircles.length; i++) {
+            var c = rawCircles[i];
+            var layerInfo = parseLayerParams(c.layerName) || {};
+            var nodeM = layerInfo.m || defaultM;
+            var nodeAlpha = layerInfo.alphaDeg || defaultAlphaDeg;
+
+            var dMm = (c.diameterMm !== undefined) ? c.diameterMm : (c.diameterPt * PT_TO_MM);
+            var z = 18;
+            if (mode === "tip") {
+                z = Math.max(3, Math.floor(dMm / nodeM - 2.0));
+            } else {
+                z = Math.max(3, Math.round(dMm / nodeM));
+            }
+            var gType = "SPUR";
+            if (c.gearType) {
+                gType = c.gearType;
+            } else if (c.rgb) {
+                // Exact RGB match #FF0000: Red=255, Green=0, Blue=0 (ignoring opacity)
+                if (Math.round(c.rgb[0]) === 255 && Math.round(c.rgb[1]) === 0 && Math.round(c.rgb[2]) === 0) {
+                    gType = "INTERNAL";
+                }
+            } else if (c.item) {
+                try {
+                    var col = (c.item.stroked && c.item.strokeColor) ? c.item.strokeColor : (c.item.filled ? c.item.fillColor : null);
+                    if (col && col.typename === "RGBColor") {
+                        if (Math.round(col.red) === 255 && Math.round(col.green) === 0 && Math.round(col.blue) === 0) {
+                            gType = "INTERNAL";
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            parsed.push({
+                origId: c.id || ("C" + (i + 1)),
+                item: c.item,
+                centerPt: c.centerPt,
+                centerMm: [c.centerPt[0] * PT_TO_MM, c.centerPt[1] * PT_TO_MM],
+                diameterMm: dMm,
+                z: z,
+                m: nodeM,
+                alphaDeg: nodeAlpha,
+                stageIndex: layerInfo.stageIndex || null,
+                layerName: c.layerName || "",
+                gearType: gType,
+                profileShiftX: 0.0
+            });
+        }
+
+        // Assign stageIndex: circles in the same layer belong to the same stage,
+        // and strictly guarantee that different layers have different stageIndex values.
+        var uniqueLayers = [];
+        var layerInfoMap = {};
+        for (var si = 0; si < parsed.length; si++) {
+            var ly = parsed[si].layerName || "Default";
+            if (!layerInfoMap.hasOwnProperty(ly)) {
+                uniqueLayers.push(ly);
+                layerInfoMap[ly] = parseLayerParams(ly) || {};
+            }
+        }
+
+        var hasAllExplicit = true;
+        var usedStages = {};
+        var explicitCount = 0;
+        for (var u = 0; u < uniqueLayers.length; u++) {
+            var uLy = uniqueLayers[u];
+            var info = layerInfoMap[uLy];
+            if (info && typeof info.stageIndex === "number" && !isNaN(info.stageIndex) && info.stageIndex > 0) {
+                if (usedStages[info.stageIndex]) {
+                    hasAllExplicit = false;
+                    break;
+                }
+                usedStages[info.stageIndex] = uLy;
+                explicitCount++;
+            } else {
+                hasAllExplicit = false;
+            }
+        }
+
+        var layerStageMap = {};
+        if (hasAllExplicit && explicitCount === uniqueLayers.length) {
+            // Perfect match: each layer explicitly specified a unique stage index (e.g. L1, レイヤー 2, レイヤー 3)
+            for (var u = 0; u < uniqueLayers.length; u++) {
+                var uLy = uniqueLayers[u];
+                layerStageMap[uLy] = layerInfoMap[uLy].stageIndex;
+            }
+        } else {
+            // Fallback / Auto-resolution:
+            // Sort layers intelligently:
+            // Layers with explicit numbers come first sorted by their numbers, then remaining layers by appearance
+            // Then assign strictly unique 1, 2, 3...
+            var layerSortList = [];
+            for (var u = 0; u < uniqueLayers.length; u++) {
+                var uLy = uniqueLayers[u];
+                var info = layerInfoMap[uLy];
+                var stHint = (info && typeof info.stageIndex === "number" && !isNaN(info.stageIndex)) ? info.stageIndex : (1000 + u);
+                layerSortList.push({ name: uLy, hint: stHint, origIdx: u });
+            }
+            layerSortList.sort(function (a, b) {
+                if (a.hint !== b.hint) return a.hint - b.hint;
+                return a.origIdx - b.origIdx;
+            });
+
+            for (var sIdx = 0; sIdx < layerSortList.length; sIdx++) {
+                layerStageMap[layerSortList[sIdx].name] = sIdx + 1;
+            }
+        }
+
+        for (var si = 0; si < parsed.length; si++) {
+            var ly = parsed[si].layerName || "Default";
+            parsed[si].stageIndex = layerStageMap[ly];
+        }
+
+        for (var pi = 0; pi < parsed.length; pi++) {
+            var po = parsed[pi];
+            logTrace("TOPOLOGY_NODE", "Parsed circle " + po.origId, {
+                origId: po.origId,
+                layerName: po.layerName,
+                stageIndex: po.stageIndex,
+                diameterMm: Math.round(po.diameterMm * 100) / 100,
+                z: po.z,
+                m: po.m,
+                gearType: po.gearType,
+                centerMm: [Math.round(po.centerMm[0] * 100) / 100, Math.round(po.centerMm[1] * 100) / 100]
+            });
+        }
+
+        // --- Free Mode: Batch independent placement without constraints ---
+        if (snapMode === "free") {
+            var freeNodes = [];
+            for (var f = 0; f < parsed.length; f++) {
+                var pObj = parsed[f];
+                var fGType = pObj.gearType || "SPUR";
+                var fRim = (fGType === "INTERNAL") ? ((pObj.m * pObj.z) + 16.0) : ((pObj.m * pObj.z) + 12.0);
+                freeNodes.push({
+                    id: "G" + (f + 1),
+                    gearType: fGType,
+                    parentId: null,
+                    relationType: "ROOT",
+                    z: pObj.z,
+                    m: pObj.m,
+                    alphaDeg: pObj.alphaDeg,
+                    relativeAngleDeg: 0.0,
+                    shaftDiameter: 5.0,
+                    rimDiameter: fRim,
+                    centerPt: pObj.centerPt,
+                    xOffset: pObj.centerMm[0],
+                    yOffset: pObj.centerMm[1],
+                    x: 0.0,
+                    origCircle: pObj
+                });
+            }
+            return {
+                nodes: freeNodes,
+                warnings: [],
+                meshingPairs: []
+            };
+        }
+
+        if (parsed.length === 1) {
+            var single = parsed[0];
+            var sGType = single.gearType || "SPUR";
+            var sRim = (sGType === "INTERNAL") ? ((single.m * single.z) + 16.0) : ((single.m * single.z) + 12.0);
+            return {
+                nodes: [{
+                    id: "G1",
+                    gearType: sGType,
+                    parentId: null,
+                    relationType: "ROOT",
+                    z: single.z,
+                    m: single.m,
+                    alphaDeg: single.alphaDeg,
+                    relativeAngleDeg: 0,
+                    shaftDiameter: 5.0,
+                    rimDiameter: sRim,
+                    centerPt: single.centerPt,
+                    xOffset: single.centerMm[0],
+                    yOffset: single.centerMm[1],
+                    x: 0.0,
+                    origCircle: single
+                }],
+                warnings: [],
+                meshingPairs: []
+            };
+        }
+
+        // Pairwise evaluation (Hierarchical: Same layer = Same stage meshing, Different layer = Different stage coaxial)
+        var pairs = [];
+        var n = parsed.length;
+        var warnings = [];
+
+        for (var i = 0; i < n; i++) {
+            for (var j = i + 1; j < n; j++) {
+                var c1 = parsed[i];
+                var c2 = parsed[j];
+                var dxMm = c2.centerMm[0] - c1.centerMm[0];
+                var dyMm = c2.centerMm[1] - c1.centerMm[1];
+                var distMm = Math.sqrt(dxMm * dxMm + dyMm * dyMm);
+
+                var isSameLayer = (c1.layerName === c2.layerName);
+
+                // --- 1. 同心（同軸連結 COAXIAL）の判定 ---
+                if (distMm <= 0.5) {
+                    if (isSameLayer) {
+                        warnings.push("同一レイヤー ('" + c1.layerName + "') 内に同心円 (" + c1.origId + ", " + c2.origId + ") が検出されました。同一平面上での干渉を回避するため、同軸(COAXIAL)として分離処理しました。");
+                    } else {
+                        logTrace("TOPOLOGY_PAIR", "Detected cross-layer COAXIAL relation", {
+                            circle1: c1.origId,
+                            layer1: c1.layerName,
+                            circle2: c2.origId,
+                            layer2: c2.layerName,
+                            distMm: Math.round(distMm * 1000) / 1000
+                        });
+                    }
+                    pairs.push({
+                        idx1: i,
+                        idx2: j,
+                        type: "COAXIAL",
+                        distMm: distMm,
+                        errorMm: distMm
+                    });
+                    continue;
+                }
+
+                // --- 2. 噛み合い（MESHING / INTERNAL_MESHING）の判定 ---
+                // 異なるレイヤー間の噛み合いは、allowCrossLayerMeshing が有効な場合のみ判定
+                if (!isSameLayer && !allowCrossLayerMeshing) {
+                    continue;
+                }
+
+                // 同一レイヤー内噛合および異レイヤー間（段間伝動）噛合の計算
+                var meshM = c1.m;
+                var meshAlpha = c1.alphaDeg;
+
+                var isC1Int = (c1.gearType === "INTERNAL");
+                var isC2Int = (c2.gearType === "INTERNAL");
+
+                if (isC1Int && isC2Int) {
+                    // 内歯車同士は噛み合わない
+                    continue;
+                }
+
+                if (isC1Int || isC2Int) {
+                    // 内歯車(Ring) x 外歯車(Pinion) の噛み合い
+                    var ringIdx = isC1Int ? i : j;
+                    var pinionIdx = isC1Int ? j : i;
+                    var ringNode = parsed[ringIdx];
+                    var pinNode = parsed[pinionIdx];
+
+                    if (ringNode.z > pinNode.z) {
+                        var aInt = (meshM * (ringNode.z - pinNode.z)) / 2.0;
+                        var errInt = Math.abs(distMm - aInt);
+                        if (errInt <= tol) {
+                            logTrace("TOPOLOGY_PAIR", "Detected " + (isSameLayer ? "" : "cross-layer ") + "INTERNAL_MESHING relation", {
+                                ringId: ringNode.origId,
+                                ringLayer: ringNode.layerName,
+                                pinionId: pinNode.origId,
+                                pinionLayer: pinNode.layerName,
+                                distMm: Math.round(distMm * 1000) / 1000,
+                                theoryDistMm: Math.round(aInt * 1000) / 1000,
+                                errorMm: Math.round(errInt * 1000) / 1000
+                            });
+                            pairs.push({
+                                idx1: pinionIdx,
+                                idx2: ringIdx,
+                                type: "INTERNAL_MESHING",
+                                distMm: distMm,
+                                errorMm: errInt,
+                                ringIdx: ringIdx,
+                                pinionIdx: pinionIdx,
+                                m: meshM,
+                                alphaDeg: meshAlpha
+                            });
+                        }
+                    }
+                } else {
+                    // 外歯車(Spur) x 外歯車(Spur) の外接噛み合い
+                    var aExt = (meshM * (c1.z + c2.z)) / 2.0;
+                    var errExt = Math.abs(distMm - aExt);
+                    if (errExt <= tol) {
+                        logTrace("TOPOLOGY_PAIR", "Detected " + (isSameLayer ? "" : "cross-layer ") + "MESHING relation", {
+                            circle1: c1.origId,
+                            layer1: c1.layerName,
+                            circle2: c2.origId,
+                            layer2: c2.layerName,
+                            distMm: Math.round(distMm * 1000) / 1000,
+                            theoryDistMm: Math.round(aExt * 1000) / 1000,
+                            errorMm: Math.round(errExt * 1000) / 1000
+                        });
+                        pairs.push({
+                            idx1: i,
+                            idx2: j,
+                            type: "MESHING",
+                            distMm: distMm,
+                            errorMm: errExt,
+                            m: meshM,
+                            alphaDeg: meshAlpha
+                        });
+                    } else if (c1.z !== c2.z) {
+                        // 幾何学的内接判定: 赤色指定されていない円でも、内接噛み合い条件を満たす場合は内歯車として自動判定
+                        var aIntGeom = (meshM * Math.abs(c1.z - c2.z)) / 2.0;
+                        var errIntGeom = Math.abs(distMm - aIntGeom);
+                        if (errIntGeom <= tol) {
+                            var gRingIdx = (c1.z > c2.z) ? i : j;
+                            var gPinionIdx = (c1.z > c2.z) ? j : i;
+                            parsed[gRingIdx].gearType = "INTERNAL";
+
+                            logTrace("TOPOLOGY_PAIR", "Geometric internal meshing auto-detected (" + parsed[gRingIdx].origId + " promoted to INTERNAL)", {
+                                ringId: parsed[gRingIdx].origId,
+                                ringLayer: parsed[gRingIdx].layerName,
+                                pinionId: parsed[gPinionIdx].origId,
+                                pinionLayer: parsed[gPinionIdx].layerName,
+                                distMm: Math.round(distMm * 1000) / 1000,
+                                theoryDistMm: Math.round(aIntGeom * 1000) / 1000,
+                                errorMm: Math.round(errIntGeom * 1000) / 1000
+                            });
+                            pairs.push({
+                                idx1: gPinionIdx,
+                                idx2: gRingIdx,
+                                type: "INTERNAL_MESHING",
+                                distMm: distMm,
+                                errorMm: errIntGeom,
+                                ringIdx: gRingIdx,
+                                pinionIdx: gPinionIdx,
+                                m: meshM,
+                                alphaDeg: meshAlpha
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort pairs by error ascending for greedy spanning tree
+        pairs.sort(function (a, b) { return a.errorMm - b.errorMm; });
+
+        // Build adjacency
+        var adj = [];
+        for (var i = 0; i < n; i++) adj.push([]);
+        for (var p = 0; p < pairs.length; p++) {
+            var pr = pairs[p];
+            adj[pr.idx1].push({ neighbor: pr.idx2, pair: pr });
+            adj[pr.idx2].push({ neighbor: pr.idx1, pair: pr });
+        }
+
+        // Pick root: circle with highest degree, preferring SPUR over INTERNAL if tied
+        var rootIdx = 0;
+        var maxDeg = -1;
+        for (var i = 0; i < n; i++) {
+            var deg = adj[i].length;
+            var isSpur = (parsed[i].gearType !== "INTERNAL");
+            if (deg > maxDeg || (deg === maxDeg && isSpur && parsed[rootIdx].gearType === "INTERNAL")) {
+                maxDeg = deg;
+                rootIdx = i;
+            }
+        }
+
+        // BFS spanning tree
+        var visited = {};
+        var treeEdges = [];
+        var queue = [rootIdx];
+        visited[rootIdx] = true;
+
+        while (queue.length > 0) {
+            var curr = queue.shift();
+            for (var k = 0; k < adj[curr].length; k++) {
+                var edge = adj[curr][k];
+                var nxt = edge.neighbor;
+                if (!visited[nxt]) {
+                    visited[nxt] = true;
+                    treeEdges.push({
+                        parent: curr,
+                        child: nxt,
+                        pair: edge.pair
+                    });
+                    queue.push(nxt);
+                }
+            }
+        }
+
+        // Check if any circle was not connected
+        var unvisited = [];
+        for (var i = 0; i < n; i++) {
+            if (!visited[i]) {
+                unvisited.push(parsed[i].origId);
+                // Connect to root as fallback
+                treeEdges.push({
+                    parent: rootIdx,
+                    child: i,
+                    pair: { type: "MESHING", distMm: (defaultM * (parsed[rootIdx].z + parsed[i].z) / 2.0), errorMm: 0 }
+                });
+            }
+        }
+        if (unvisited.length > 0) {
+            warnings.push("\u565b\u307f\u5408\u3044\u8ddd\u96e2\u306e\u7bc4\u56f2\u5916\u306b\u3042\u308b\u5186\u3092\u691c\u51fa\u3057\u307e\u3057\u305f (" + unvisited.join(", ") + ")\u3002\u3053\u308c\u3089\u306f\u6700\u3082\u8fd1\u3044\u30ae\u30a2\u306e\u565b\u307f\u5408\u3044\u5019\u88dc\u3068\u3057\u3066\u4eee\u63a5\u7d9a\u3055\u308c\u307e\u3057\u305f\u3002");
+        }
+
+        // Assign Gear IDs
+        var idMap = {};
+        idMap[rootIdx] = "G1";
+        var nextIdNum = 2;
+        for (var e = 0; e < treeEdges.length; e++) {
+            var cIdx = treeEdges[e].child;
+            if (!idMap[cIdx]) {
+                idMap[cIdx] = "G" + nextIdNum++;
+            }
+        }
+
+        // If exact_position mode, calculate required profile shift x for each meshing edge
+        if (snapMode === "exact_position") {
+            for (var e = 0; e < treeEdges.length; e++) {
+                var edge = treeEdges[e];
+                if (edge.pair.type !== "COAXIAL") {
+                    var pParsed = parsed[edge.parent];
+                    var cParsed = parsed[edge.child];
+                    var isInt = (cParsed.gearType === "INTERNAL" || pParsed.gearType === "INTERNAL");
+                    var shiftRes = solveProfileShiftForDistance({
+                        m: pParsed.m,
+                        z1: isInt ? Math.min(pParsed.z, cParsed.z) : pParsed.z,
+                        z2: isInt ? Math.max(pParsed.z, cParsed.z) : cParsed.z,
+                        alphaDeg: pParsed.alphaDeg,
+                        targetCenterDistanceMm: edge.pair.distMm,
+                        isInternal: isInt
+                    });
+                    if (shiftRes.possible) {
+                        pParsed.profileShiftX = shiftRes.x1;
+                        cParsed.profileShiftX = shiftRes.x2;
+                    } else if (shiftRes.warning) {
+                        warnings.push(shiftRes.warning);
+                    }
+                }
+            }
+        }
+
+        var resultNodes = [];
+        var rootParsed = parsed[rootIdx];
+        var rootNode = {
+            id: idMap[rootIdx],
+            gearType: rootParsed.gearType || "SPUR",
+            parentId: null,
+            relationType: "ROOT",
+            z: rootParsed.z,
+            m: rootParsed.m,
+            alphaDeg: rootParsed.alphaDeg,
+            stageIndex: rootParsed.stageIndex,
+            layerName: rootParsed.layerName,
+            relativeAngleDeg: 0.0,
+            shaftDiameter: 5.0,
+            rimDiameter: (rootParsed.m * rootParsed.z) + 12.0,
+            centerPt: rootParsed.centerPt,
+            xOffset: rootParsed.centerMm[0],
+            yOffset: rootParsed.centerMm[1],
+            x: rootParsed.profileShiftX || 0.0,
+            origCircle: rootParsed
+        };
+        resultNodes.push(rootNode);
+
+        for (var e = 0; e < treeEdges.length; e++) {
+            var edge = treeEdges[e];
+            var pNodeParsed = parsed[edge.parent];
+            var cNodeParsed = parsed[edge.child];
+            var pId = idMap[edge.parent];
+            var cId = idMap[edge.child];
+
+            var relType = "MESHING";
+            var gType = cNodeParsed.gearType || "SPUR";
+
+            if (edge.pair.type === "COAXIAL") {
+                relType = "COAXIAL";
+                // Guarantee strictly different stage for coaxial gears to avoid physical planar interference
+                if (cNodeParsed.stageIndex === pNodeParsed.stageIndex) {
+                    cNodeParsed.stageIndex = pNodeParsed.stageIndex + 1;
+                    warnings.push("同軸ギア (" + cId + ") が親ギア (" + pId + ") と同じ段であったため、平面干渉を回避するため段番号を " + cNodeParsed.stageIndex + " に自動変更しました。");
+                }
+            }
+
+            // Connection angle from parent to child (in degrees)
+            var dX = cNodeParsed.centerPt[0] - pNodeParsed.centerPt[0];
+            var dY = cNodeParsed.centerPt[1] - pNodeParsed.centerPt[1];
+            var connAngleDeg = 0.0;
+            if (relType !== "COAXIAL") {
+                connAngleDeg = Math.atan2(dY, dX) * (180.0 / Math.PI);
+            }
+
+            var defaultRim = (cNodeParsed.m * cNodeParsed.z) + 12.0;
+
+            resultNodes.push({
+                id: cId,
+                gearType: gType,
+                parentId: pId,
+                relationType: relType,
+                z: cNodeParsed.z,
+                m: cNodeParsed.m,
+                alphaDeg: cNodeParsed.alphaDeg,
+                stageIndex: cNodeParsed.stageIndex,
+                layerName: cNodeParsed.layerName,
+                relativeAngleDeg: Math.round(connAngleDeg * 100) / 100,
+                shaftDiameter: 5.0,
+                rimDiameter: defaultRim,
+                centerPt: cNodeParsed.centerPt,
+                xOffset: cNodeParsed.centerMm[0],
+                yOffset: cNodeParsed.centerMm[1],
+                x: cNodeParsed.profileShiftX || 0.0,
+                origCircle: cNodeParsed
+            });
+        }
+
+        logTrace("TOPOLOGY_TREE", "Circle topology analysis completed successfully", {
+            resultNodeCount: resultNodes.length,
+            rootId: rootNode.id,
+            pairCount: pairs.length,
+            snapMode: snapMode,
+            warningCount: warnings.length
+        });
+
+        return {
+            nodes: resultNodes,
+            warnings: warnings,
+            meshingPairs: pairs,
+            snapMode: snapMode,
+            allowCrossLayerMeshing: allowCrossLayerMeshing
+        };
+    }
+
+    /**
+     * Solves and calculates a complete branched gear train (tree graph of meshing and coaxial gears).
+     * Computes absolute center coordinates, exact conjugate meshing phase for every branch,
+     * reduction ratios from root, and adjacent child gear interference clearance.
+     * 
+     * @param {Object} config
+     *   m: Module (mm)
+     *   alphaDeg: Base pressure angle (default 20.0)
+     *   backlash: Backlash in mm (default 0.15)
+     *   pathQuality: "bezier_recommended" | "bezier_minimal" | "polyline"
+     *   nodes: Array of gear node definitions:
+     *     - id: String (e.g. "G1", "G2")
+     *     - parentId: String | null
+     *     - relationType: "ROOT" | "MESHING" | "COAXIAL"
+     *     - z: Number of teeth
+     *     - relativeAngleDeg: Number (relative angle from parent in deg, for MESHING)
+     *     - shaftDiameter: Number in mm (default 5.0)
+     *     - x: Number (optional root X offset in mm)
+     *     - y: Number (optional root Y offset in mm)
+     *     - initialRotDeg: Number (optional root initial rotation in deg)
+     */
+
+    exports.parseCircleGeometry = parseCircleGeometry;
+    exports.solveProfileShiftForDistance = solveProfileShiftForDistance;
+    exports.parseLayerParams = parseLayerParams;
+    exports.analyzeCircleTopology = analyzeCircleTopology;
+})(InvoluteMath);
+
+/**
+ * TrainTreeResolver.jsxinc - Branched Gear Train Kinematics & Node Expansion
+ * Part of GearDrawer Architecture
+ */
+
+var InvoluteMath = InvoluteMath || {};
+
+(function (exports) {
+// Global conversion constants & helpers
+var MM_TO_PT = 72.0 / 25.4;
+var PT_TO_MM = 25.4 / 72.0;
+
+function logTrace(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.log(category, msg, data);
+    }
+}
+
+function logWarn(category, msg, data) {
+    if (typeof CalcLogger !== "undefined") {
+        CalcLogger.warn(category, msg, data);
+    }
+}
+
+    var calculateSpurGear = exports.calculateSpurGear || InvoluteMath.calculateSpurGear;
+    var calculateInternalGear = exports.calculateInternalGear || InvoluteMath.calculateInternalGear;
+    var calculateRack = exports.calculateRack || InvoluteMath.calculateRack;
+
+    function calculateBranchedGearTrain(config) {
+        var m = config.m || 2.0;
+        var alphaDeg = (config.alphaDeg !== undefined) ? config.alphaDeg : 20.0;
+        var backlash = (config.backlash !== undefined) ? config.backlash : 0.15;
+        var pathQuality = config.pathQuality || "bezier_recommended";
+        var rawNodes = config.nodes || [];
+
+        if (rawNodes.length === 0) {
+            throw new Error("Branched gear train requires at least one root gear node.");
+        }
+
+        var nodeMap = {};
+        var resolvedNodes = [];
+        var warnings = [];
+
+        // 1. Index nodes
+        for (var i = 0; i < rawNodes.length; i++) {
+            var n = rawNodes[i];
+            var relType = n.relationType;
+            if (!relType) {
+                if (!n.parentId) relType = "ROOT";
+                else if (n.isCoaxial) relType = "COAXIAL";
+                else relType = "MESHING";
+            }
+            var relAngle = (n.relativeAngleDeg !== undefined) ? n.relativeAngleDeg : ((n.angleDeg !== undefined) ? n.angleDeg : 0.0);
+            var gType = (n.gearType || "SPUR").toUpperCase(); // "SPUR" or "INTERNAL"
+            var zVal = n.z || 18;
+            var nodeM = (n.m !== undefined && n.m !== null) ? parseFloat(n.m) : null;
+            var nodeAlpha = (n.alphaDeg !== undefined && n.alphaDeg !== null) ? parseFloat(n.alphaDeg) : null;
+            var defaultRim = ((nodeM || m) * zVal) + 12.0;
+
+            var nodeX = (n.profileShiftX !== undefined) ? n.profileShiftX : ((n.x !== undefined && n.xOffset !== undefined) ? n.x : 0.0);
+            var xOff = (n.xOffset !== undefined) ? n.xOffset : (n.x || 0.0);
+            var yOff = (n.yOffset !== undefined) ? n.yOffset : (n.y || 0.0);
+
+            var nodeStage = (n.stageIndex !== undefined && n.stageIndex !== null) ? n.stageIndex : ((n.origCircle && n.origCircle.stageIndex !== undefined) ? n.origCircle.stageIndex : null);
+            var nodeLayerName = n.layerName || ((n.origCircle && n.origCircle.layerName) ? n.origCircle.layerName : "");
+
+            nodeMap[n.id] = {
+                id: n.id,
+                parentId: n.parentId,
+                relationType: relType,
+                gearType: gType,
+                z: zVal,
+                m: nodeM,
+                alphaDeg: nodeAlpha,
+                stageIndex: nodeStage,
+                layerName: nodeLayerName,
+                relativeAngleDeg: relAngle,
+                shaftDiameter: (n.shaftDiameter !== undefined) ? n.shaftDiameter : 5.0,
+                shaftType: n.shaftType || "丸穴",
+                shaftOptions: n.shaftOptions || null,
+                isMutilated: !!(n.isMutilated || n.mutilated),
+                activeTeeth: (n.activeTeeth !== undefined) ? parseInt(n.activeTeeth, 10) : zVal,
+                startTooth: (n.startTooth !== undefined) ? parseInt(n.startTooth, 10) : 1,
+                blankRadiusType: n.blankRadiusType || "root",
+                blankRadius: n.blankRadius,
+                rimDiameter: (n.rimDiameter !== undefined) ? n.rimDiameter : defaultRim,
+                rimType: n.rimType || "circle",
+                xOffset: xOff,
+                yOffset: yOff,
+                profileShiftX: nodeX,
+                x: nodeX,
+                origCircle: n.origCircle || null,
+                initialRotDeg: n.initialRotDeg || 0.0,
+                children: []
+            };
+        }
+
+        // 2. Build tree structure & find root
+        var root = null;
+        for (var id in nodeMap) {
+            if (nodeMap.hasOwnProperty(id)) {
+                var nd = nodeMap[id];
+                if (!nd.parentId || nd.relationType === "ROOT") {
+                    root = nd;
+                } else if (nodeMap[nd.parentId]) {
+                    nodeMap[nd.parentId].children.push(nd);
+                } else {
+                    throw new Error("Parent node '" + nd.parentId + "' not found for node '" + nd.id + "'.");
+                }
+            }
+        }
+
+        if (!root) {
+            root = rawNodes[0];
+        }
+
+        // 3. Breadth-first resolution of kinematics & center coordinates
+        var queue = [];
+
+        // Initialize root
+        root.m = (root.m !== null && root.m !== undefined) ? root.m : m;
+        root.alphaDeg = (root.alphaDeg !== null && root.alphaDeg !== undefined) ? root.alphaDeg : alphaDeg;
+        root.stageIndex = (root.stageIndex !== null && root.stageIndex !== undefined) ? root.stageIndex : 1;
+        root.layerIndex = root.stageIndex;
+        root.centerMm = [root.xOffset, root.yOffset];
+        root.centerPt = [root.xOffset * MM_TO_PT, root.yOffset * MM_TO_PT];
+        root.rotationDeg = root.initialRotDeg;
+        root.ratioFromRoot = 1.0;
+        root.directionFromRoot = 1; // 1 = same, -1 = reversed
+        queue.push(root);
+
+        while (queue.length > 0) {
+            var curr = queue.shift();
+
+            var currShiftX = curr.profileShiftX || 0.0;
+
+            // Calculate gear geometry for current node based on its stage-specific m and alphaDeg
+            if (curr.gearType === "INTERNAL") {
+                curr.gearData = calculateInternalGear({
+                    m: curr.m,
+                    z: curr.z,
+                    x: currShiftX,
+                    alphaDeg: curr.alphaDeg,
+                    backlash: backlash,
+                    rimDiameter: curr.rimDiameter,
+                    rimType: curr.rimType,
+                    pathQuality: pathQuality
+                });
+            } else if (curr.gearType === "RACK") {
+                curr.gearData = calculateRack({
+                    m: curr.m,
+                    zRack: curr.z,
+                    z: curr.z,
+                    alphaDeg: curr.alphaDeg,
+                    backlash: backlash,
+                    backHeight: (curr.backBarHeight !== undefined) ? curr.backBarHeight : ((curr.rackHeight !== undefined) ? Math.max(0.5, curr.rackHeight - 2.25 * curr.m) : (2.5 * curr.m)),
+                    height: curr.rackHeight,
+                    pathQuality: pathQuality
+                });
+            } else {
+                curr.gearData = calculateSpurGear({
+                    m: curr.m,
+                    z: curr.z,
+                    x: currShiftX,
+                    alphaDeg: curr.alphaDeg,
+                    backlash: backlash,
+                    shaftDiameter: curr.shaftDiameter,
+                    shaftType: curr.shaftType,
+                    shaftOptions: curr.shaftOptions,
+                    isMutilated: curr.isMutilated,
+                    activeTeeth: curr.activeTeeth,
+                    startTooth: curr.startTooth,
+                    blankRadiusType: curr.blankRadiusType,
+                    blankRadius: curr.blankRadius,
+                    useFillet: true,
+                    pathQuality: pathQuality
+                });
+            }
+
+            resolvedNodes.push(curr);
+
+            // Check interference between siblings (children of curr that are MESHING)
+            var meshingChildren = [];
+            for (var c = 0; c < curr.children.length; c++) {
+                if (curr.children[c].relationType === "MESHING") {
+                    meshingChildren.push(curr.children[c]);
+                }
+            }
+
+            for (var i1 = 0; i1 < meshingChildren.length; i1++) {
+                for (var i2 = i1 + 1; i2 < meshingChildren.length; i2++) {
+                    var ch1 = meshingChildren[i1];
+                    var ch2 = meshingChildren[i2];
+                    if (ch1.gearType !== "INTERNAL" && ch2.gearType !== "INTERNAL") {
+                        var a1 = (curr.m * (curr.z + ch1.z)) / 2.0;
+                        var a2 = (curr.m * (curr.z + ch2.z)) / 2.0;
+                        var thetaDiffRad = Math.abs(ch1.relativeAngleDeg - ch2.relativeAngleDeg) * (Math.PI / 180.0);
+                        var distBetweenChildren = Math.sqrt(a1 * a1 + a2 * a2 - 2.0 * a1 * a2 * Math.cos(thetaDiffRad));
+                        var ra1 = curr.m * (ch1.z + 2.0) / 2.0;
+                        var ra2 = curr.m * (ch2.z + 2.0) / 2.0;
+                        var clearance = distBetweenChildren - (ra1 + ra2);
+                        if (clearance < 0.5) {
+                            warnings.push("Physical collision between branch gears '" + ch1.id + "' and '" + ch2.id + "' (Clearance: " + clearance.toFixed(2) + "mm < 0.5mm)");
+                        }
+                    }
+                }
+            }
+
+            // Resolve each child
+            for (var chIdx = 0; chIdx < curr.children.length; chIdx++) {
+                var child = curr.children[chIdx];
+
+                if (child.relationType === "COAXIAL") {
+                    // Coaxial stepped gear: preserve layer-based stageIndex if present, else increment
+                    if (child.stageIndex !== null && child.stageIndex !== undefined) {
+                        child.layerIndex = child.stageIndex;
+                    } else {
+                        child.stageIndex = curr.stageIndex + 1;
+                        child.layerIndex = child.stageIndex;
+                    }
+                    child.m = (child.m !== null && child.m !== undefined) ? child.m : curr.m;
+                    child.alphaDeg = (child.alphaDeg !== null && child.alphaDeg !== undefined) ? child.alphaDeg : curr.alphaDeg;
+
+                    child.centerMm = [curr.centerMm[0], curr.centerMm[1]];
+                    child.centerPt = [curr.centerPt[0], curr.centerPt[1]];
+                    child.rotationDeg = curr.rotationDeg;
+                    child.ratioFromRoot = curr.ratioFromRoot;
+                    child.directionFromRoot = curr.directionFromRoot;
+                } else {
+                    // Meshing gear (External or Internal): preserve layer-based stageIndex if present, else inherit from parent
+                    if (child.stageIndex !== null && child.stageIndex !== undefined) {
+                        child.layerIndex = child.stageIndex;
+                    } else {
+                        child.stageIndex = curr.stageIndex;
+                        child.layerIndex = child.stageIndex;
+                    }
+                    child.m = curr.m;
+                    child.alphaDeg = curr.alphaDeg;
+
+                    var thetaDeg = child.relativeAngleDeg;
+                    var angleRad = thetaDeg * (Math.PI / 180.0);
+
+                    var a_mm = 0;
+                    if (child.gearType === "RACK") {
+                        // Pinion (curr) driving Rack (child)
+                        var rpRackMm = (curr.m * curr.z) / 2.0;
+                        a_mm = rpRackMm;
+                        child.directionFromRoot = curr.directionFromRoot;
+                        child.ratioFromRoot = curr.ratioFromRoot;
+
+                        // Rack orientation: pitch line perpendicular to radial line from pinion center
+                        var rackRotDeg = thetaDeg + 90.0;
+                        child.rotationDeg = rackRotDeg;
+
+                        // Phase alignment: sliding offset along rack pitch line
+                        var deltaPhiRack = (curr.rotationDeg * (Math.PI / 180.0)) - angleRad;
+                        var rackShiftMm = -rpRackMm * deltaPhiRack;
+                        child.shiftMm = rackShiftMm;
+                        child.shiftPt = rackShiftMm * MM_TO_PT;
+                    } else if (curr.gearType !== "INTERNAL" && child.gearType !== "INTERNAL") {
+                        // External x External
+                        a_mm = (curr.m * (curr.z + child.z)) / 2.0;
+                        child.directionFromRoot = -curr.directionFromRoot;
+                        child.ratioFromRoot = curr.ratioFromRoot * (-curr.z / child.z);
+
+                        // phi_c = theta + 180 - (180 / z_c) - (phi_p - theta) * (z_p / z_c)
+                        var phiChildDeg = thetaDeg + 180.0 - (180.0 / child.z) - (curr.rotationDeg - thetaDeg) * (curr.z / child.z);
+                        child.rotationDeg = phiChildDeg;
+                    } else if (curr.gearType !== "INTERNAL" && child.gearType === "INTERNAL") {
+                        // External Pinion (Parent) x Internal Ring (Child)
+                        if (child.z <= curr.z) {
+                            warnings.push("Internal gear '" + child.id + "' (z=" + child.z + ") must have more teeth than pinion '" + curr.id + "' (z=" + curr.z + ").");
+                        }
+                        a_mm = (curr.m * (child.z - curr.z)) / 2.0;
+                        child.directionFromRoot = curr.directionFromRoot; // Same rotation direction
+                        child.ratioFromRoot = curr.ratioFromRoot * (curr.z / child.z);
+
+                        // Conjugate internal meshing phase
+                        var tauP = (2.0 * Math.PI) / curr.z;
+                        var psiP = angleRad - (curr.rotationDeg * (Math.PI / 180.0));
+                        var kP = Math.round((psiP - 0.5 * tauP) / tauP);
+                        var deltaP = (kP * tauP + 0.5 * tauP) - psiP;
+                        var phiCRad = angleRad - deltaP * (curr.z / child.z);
+                        child.rotationDeg = phiCRad * (180.0 / Math.PI);
+                    } else if (curr.gearType === "INTERNAL" && child.gearType !== "INTERNAL") {
+                        // Internal Ring (Parent) x External Pinion (Child)
+                        if (curr.z <= child.z) {
+                            warnings.push("Internal gear '" + curr.id + "' (z=" + curr.z + ") must have more teeth than pinion '" + child.id + "' (z=" + child.z + ").");
+                        }
+                        a_mm = (curr.m * (curr.z - child.z)) / 2.0;
+                        child.directionFromRoot = curr.directionFromRoot;
+                        child.ratioFromRoot = curr.ratioFromRoot * (curr.z / child.z);
+
+                        // Inverse conjugate internal meshing phase
+                        var tauR = (2.0 * Math.PI) / curr.z;
+                        var psiR = angleRad - (curr.rotationDeg * (Math.PI / 180.0));
+                        var kR = Math.round(psiR / tauR);
+                        var deltaR = kR * tauR - psiR;
+                        var phiChildRad = angleRad - deltaR * (curr.z / child.z) + (Math.PI / child.z);
+                        child.rotationDeg = phiChildRad * (180.0 / Math.PI);
+                    }
+
+                    if (config.keepExactCenterPositions || config.snapMode === "exact_position" || config.snapMode === "free") {
+                        child.centerMm = [child.xOffset, child.yOffset];
+                        child.centerPt = [child.xOffset * MM_TO_PT, child.yOffset * MM_TO_PT];
+                    } else {
+                        child.centerMm = [
+                            curr.centerMm[0] + a_mm * Math.cos(angleRad),
+                            curr.centerMm[1] + a_mm * Math.sin(angleRad)
+                        ];
+                        child.centerPt = [
+                            child.centerMm[0] * MM_TO_PT,
+                            child.centerMm[1] * MM_TO_PT
+                        ];
+                    }
+                }
+
+                queue.push(child);
+            }
+        }
+
+        logTrace("BRANCHED_TRAIN", "Branched gear train resolved", {
+            nodeCount: resolvedNodes.length,
+            m: m,
+            alphaDeg: alphaDeg,
+            warningCount: warnings.length,
+            isFeasible: (warnings.length === 0)
+        });
+
+        return {
+            m: m,
+            alphaDeg: alphaDeg,
+            backlash: backlash,
+            nodes: resolvedNodes,
+            nodeMap: nodeMap,
+            warnings: warnings,
+            isFeasible: (warnings.length === 0)
+        };
+    }
+
+    /**
+     * Expands a Spur Gear Pair specification into trainNodes array for branched train integration.
+     */
+    function expandSpurPairToNodes(spec) {
+        spec = spec || {};
+        var m = spec.m || 2.0;
+        var z1 = spec.z1 || 18;
+        var z2 = spec.z2 || 36;
+        var alphaDeg = (spec.alphaDeg !== undefined) ? spec.alphaDeg : 20.0;
+        var angleDeg = (spec.angleDeg !== undefined) ? spec.angleDeg : 0.0;
+        var shaft1 = (spec.shaftDiameter1 !== undefined) ? spec.shaftDiameter1 : 5.0;
+        var shaft2 = (spec.shaftDiameter2 !== undefined) ? spec.shaftDiameter2 : 5.0;
+
+        return [
+            { id: "G1", gearType: "SPUR", parentId: null, relationType: "ROOT", z: z1, m: m, alphaDeg: alphaDeg, relativeAngleDeg: 0.0, shaftDiameter: shaft1, rimDiameter: (m * z1) + 12.0 },
+            { id: "G2", gearType: "SPUR", parentId: "G1", relationType: "MESHING", z: z2, m: m, alphaDeg: alphaDeg, relativeAngleDeg: angleDeg, shaftDiameter: shaft2, rimDiameter: (m * z2) + 12.0 }
+        ];
+    }
+
+    /**
+     * Expands a Rack & Pinion specification into trainNodes array for branched train integration.
+     */
+    function expandRackToNodes(spec) {
+        spec = spec || {};
+        var m = spec.m || 2.0;
+        var zp = spec.zp || 18;
+        var zr = spec.zr || 20;
+        var rackHeight = spec.rackHeight || (4.0 * m);
+        var alphaDeg = (spec.alphaDeg !== undefined) ? spec.alphaDeg : 20.0;
+        var angleDeg = (spec.angleDeg !== undefined) ? spec.angleDeg : -90.0; // default rack placed below pinion
+        var shaft = (spec.shaftDiameter !== undefined) ? spec.shaftDiameter : 5.0;
+
+        return [
+            { id: "G1", gearType: "SPUR", parentId: null, relationType: "ROOT", z: zp, m: m, alphaDeg: alphaDeg, relativeAngleDeg: 0.0, shaftDiameter: shaft, rimDiameter: (m * zp) + 12.0 },
+            { id: "R1", gearType: "RACK", parentId: "G1", relationType: "MESHING", z: zr, m: m, alphaDeg: alphaDeg, relativeAngleDeg: angleDeg, rackHeight: rackHeight }
+        ];
+    }
+
+    /**
+     * Expands an Internal Gear Pair specification into trainNodes array for branched train integration.
+     */
+    function expandInternalPairToNodes(spec) {
+        spec = spec || {};
+        var m = spec.m || 2.0;
+        var zp = spec.zp || 18;
+        var zr = spec.zr || 48;
+        var alphaDeg = (spec.alphaDeg !== undefined) ? spec.alphaDeg : 20.0;
+        var angleDeg = (spec.angleDeg !== undefined) ? spec.angleDeg : 0.0;
+        var shaft = (spec.shaftDiameter !== undefined) ? spec.shaftDiameter : 5.0;
+        var rim = (spec.rimDiameter !== undefined) ? spec.rimDiameter : ((m * zr) + 16.0);
+
+        return [
+            { id: "G1", gearType: "SPUR", parentId: null, relationType: "ROOT", z: zp, m: m, alphaDeg: alphaDeg, relativeAngleDeg: 0.0, shaftDiameter: shaft, rimDiameter: (m * zp) + 12.0 },
+            { id: "G2", gearType: "INTERNAL", parentId: "G1", relationType: "MESHING", z: zr, m: m, alphaDeg: alphaDeg, relativeAngleDeg: angleDeg, shaftDiameter: 5.0, rimDiameter: rim }
+        ];
+    }
+
+    /**
+     * Expands a Standard 2K-H Planetary Gear System into trainNodes array for branched train integration.
+     */
+    function expandPlanetaryToNodes(spec) {
+        spec = spec || {};
+        var m = spec.m || 2.0;
+        var zs = spec.zs || 18;
+        var zp = spec.zp || 18;
+        var zr = spec.zr || (zs + 2 * zp);
+        var numPlanets = spec.numPlanets || 3;
+        var alphaDeg = (spec.alphaDeg !== undefined) ? spec.alphaDeg : 20.0;
+        var sunShaft = (spec.sunShaft !== undefined) ? spec.sunShaft : 5.0;
+        var planetShaft = (spec.planetShaft !== undefined) ? spec.planetShaft : 4.0;
+        var rim = (spec.rimDiameter !== undefined) ? spec.rimDiameter : ((m * zr) + 16.0);
+
+        var nodes = [];
+        // 1. Sun gear at root
+        nodes.push({
+            id: "S1",
+            gearType: "SPUR",
+            parentId: null,
+            relationType: "ROOT",
+            z: zs,
+            m: m,
+            alphaDeg: alphaDeg,
+            relativeAngleDeg: 0.0,
+            shaftDiameter: sunShaft,
+            rimDiameter: (m * zs) + 12.0
+        });
+
+        // 2. Planets orbiting Sun
+        var spacingDeg = 360.0 / numPlanets;
+        for (var i = 0; i < numPlanets; i++) {
+            nodes.push({
+                id: "P" + (i + 1),
+                gearType: "SPUR",
+                parentId: "S1",
+                relationType: "MESHING",
+                z: zp,
+                m: m,
+                alphaDeg: alphaDeg,
+                relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                shaftDiameter: planetShaft,
+                rimDiameter: (m * zp) + 12.0
+            });
+        }
+
+        // 3. Ring gear coaxial with Sun (concentric)
+        nodes.push({
+            id: "R1",
+            gearType: "INTERNAL",
+            parentId: "S1",
+            relationType: "COAXIAL",
+            z: zr,
+            m: m,
+            alphaDeg: alphaDeg,
+            relativeAngleDeg: 0.0,
+            shaftDiameter: 5.0,
+            rimDiameter: rim
+        });
+
+        return nodes;
+    }
+
+    /**
+     * Expands a 3K Paradoxical Planetary Gear System into trainNodes array for branched train integration.
+     */
+    function expandParadoxicalToNodes(spec) {
+        spec = spec || {};
+        var m = spec.m || 2.0;
+        var zs = spec.zs || 24;
+        var zp = spec.zp || 18;
+        var zr1 = spec.zr1 || (zs + 2 * zp);
+        var zr2 = (spec.zr2 !== undefined) ? spec.zr2 : (zr1 - 1);
+        var numPlanets = spec.numPlanets || 3;
+        var alphaDeg = (spec.alphaDeg !== undefined) ? spec.alphaDeg : 20.0;
+        var xr2 = spec.xr2 || 0.0;
+        var sunShaft = (spec.sunShaft !== undefined) ? spec.sunShaft : 5.0;
+        var planetShaft = (spec.planetShaft !== undefined) ? spec.planetShaft : 4.0;
+        var rim1 = (spec.rimDiameter1 !== undefined) ? spec.rimDiameter1 : ((m * zr1) + 16.0);
+        var rim2 = (spec.rimDiameter2 !== undefined) ? spec.rimDiameter2 : ((m * zr2) + 16.0);
+
+        var nodes = [];
+        // 1. Sun gear at root
+        nodes.push({
+            id: "S1",
+            gearType: "SPUR",
+            parentId: null,
+            relationType: "ROOT",
+            z: zs,
+            m: m,
+            alphaDeg: alphaDeg,
+            relativeAngleDeg: 0.0,
+            shaftDiameter: sunShaft,
+            rimDiameter: (m * zs) + 12.0
+        });
+
+        // 2. Planets orbiting Sun
+        var spacingDeg = 360.0 / numPlanets;
+        for (var i = 0; i < numPlanets; i++) {
+            nodes.push({
+                id: "P" + (i + 1),
+                gearType: "SPUR",
+                parentId: "S1",
+                relationType: "MESHING",
+                z: zp,
+                m: m,
+                alphaDeg: alphaDeg,
+                relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                shaftDiameter: planetShaft,
+                rimDiameter: (m * zp) + 12.0
+            });
+        }
+
+        // 3. Fixed Ring 1 coaxial with Sun (Stage 1)
+        nodes.push({
+            id: "R1",
+            gearType: "INTERNAL",
+            parentId: "S1",
+            relationType: "COAXIAL",
+            z: zr1,
+            m: m,
+            alphaDeg: alphaDeg,
+            stageIndex: 1,
+            layerName: "Ring1_Fixed",
+            relativeAngleDeg: 0.0,
+            shaftDiameter: 5.0,
+            rimDiameter: rim1
+        });
+
+        // 4. Output Ring 2 coaxial with Sun (Stage 2) with profile shift xr2
+        nodes.push({
+            id: "R2",
+            gearType: "INTERNAL",
+            parentId: "S1",
+            relationType: "COAXIAL",
+            z: zr2,
+            m: m,
+            x: xr2,
+            profileShiftX: xr2,
+            alphaDeg: alphaDeg,
+            stageIndex: 2,
+            layerName: "Ring2_Output",
+            relativeAngleDeg: 0.0,
+            shaftDiameter: 5.0,
+            rimDiameter: rim2
+        });
+
+        return nodes;
+    }
+
+    exports.calculateBranchedGearTrain = calculateBranchedGearTrain;
+    exports.expandSpurPairToNodes = expandSpurPairToNodes;
+    exports.expandRackToNodes = expandRackToNodes;
+    exports.expandInternalPairToNodes = expandInternalPairToNodes;
+    exports.expandPlanetaryToNodes = expandPlanetaryToNodes;
+    exports.expandParadoxicalToNodes = expandParadoxicalToNodes;
+})(InvoluteMath);
+
 
 /**
  * PathBuilder.jsxinc - GearDrawer Illustrator DOM Builder
@@ -625,15 +4288,111 @@ var InvoluteMath = (function () {
 var PathBuilder = (function () {
     var MM_TO_PT = 72 / 25.4;
 
-    function getOrCreateLayer(doc, layerName) {
-        for (var i = 0; i < doc.layers.length; i++) {
-            if (doc.layers[i].name === layerName) {
-                return doc.layers[i];
+    function logTrace(category, msg, data) {
+        if (typeof CalcLogger !== "undefined" && CalcLogger && typeof CalcLogger.log === "function") {
+            CalcLogger.log(category, msg, data);
+        }
+    }
+
+    // --- Standard Style Presets & Defaults ---
+    var STYLES = {
+        DEFAULT_CUT_WIDTH: 0.5,    // Default cut stroke width in pt
+        DEFAULT_GUIDE_WIDTH: 0.25, // Default guide stroke width in pt
+        COLOR_CUT: createRGBColor(255, 0, 0),    // Red (#FF0000) for Laser/CNC Cutting
+        COLOR_GUIDE: createRGBColor(0, 150, 0),  // Green (#009600) for Pitch/Center Guides
+        COLOR_TEXT: createRGBColor(0, 0, 0)      // Black for Annotations
+    };
+
+    /**
+     * Safely retrieves the active artboard rectangle [left, top, right, bottom] in pt.
+     */
+    function getActiveArtboardRect(doc) {
+        if (!doc || !doc.artboards || doc.artboards.length === 0) {
+            return [0, 1000, 1000, 0];
+        }
+        var idx = 0;
+        try {
+            if (typeof doc.artboards.getActiveArtboardIndex === "function") {
+                idx = doc.artboards.getActiveArtboardIndex();
+            }
+        } catch (e) {}
+        if (idx < 0 || idx >= doc.artboards.length) idx = 0;
+        var ab = doc.artboards[idx];
+        return (ab && ab.artboardRect) ? ab.artboardRect : [0, 1000, 1000, 0];
+    }
+
+    /**
+     * Recursively unlocks and makes visible a layer, its ancestors, sublayers, and page items.
+     * Prevents Illustrator Error 8705 ("Target layer cannot be modified").
+     */
+    function unlockAndShowLayer(layer) {
+        if (!layer) return;
+        try {
+            // Unlock ancestors if parent is another layer
+            if (layer.parent && layer.parent.typename === "Layer") {
+                unlockAndShowLayer(layer.parent);
+            }
+        } catch (eP) {}
+
+        try { layer.locked = false; } catch (eL) {}
+        try { layer.visible = true; } catch (eV) {}
+
+        try {
+            if (layer.layers && layer.layers.length > 0) {
+                for (var i = 0; i < layer.layers.length; i++) {
+                    try { layer.layers[i].locked = false; } catch (eSubL) {}
+                    try { layer.layers[i].visible = true; } catch (eSubV) {}
+                }
+            }
+        } catch (eSub) {}
+
+        try {
+            if (layer.pageItems && layer.pageItems.length > 0) {
+                for (var j = 0; j < layer.pageItems.length; j++) {
+                    try { layer.pageItems[j].locked = false; } catch (eItmL) {}
+                    try { layer.pageItems[j].hidden = false; } catch (eItmH) {}
+                }
+            }
+        } catch (eItm) {}
+    }
+
+    function getOrCreateLayer(doc, layerName, parentLayer) {
+        if (parentLayer) {
+            unlockAndShowLayer(parentLayer);
+        }
+        var container = parentLayer ? parentLayer.layers : doc.layers;
+        var targetLyr = null;
+        for (var i = 0; i < container.length; i++) {
+            if (container[i].name === layerName) {
+                targetLyr = container[i];
+                break;
             }
         }
-        var newLayer = doc.layers.add();
-        newLayer.name = layerName;
-        return newLayer;
+        if (!targetLyr) {
+            targetLyr = container.add();
+            targetLyr.name = layerName;
+        }
+
+        unlockAndShowLayer(targetLyr);
+        try {
+            doc.activeLayer = targetLyr;
+        } catch (eAct) {}
+
+        return targetLyr;
+    }
+
+    function getRegistrationColor(doc) {
+        try {
+            if (doc && doc.swatches) {
+                for (var s = 0; s < doc.swatches.length; s++) {
+                    var swName = doc.swatches[s].name;
+                    if (swName === "[Registration]" || swName === "[レジストレーション]") {
+                        return doc.swatches[s].color;
+                    }
+                }
+            }
+        } catch (e) {}
+        return createRGBColor(30, 30, 30);
     }
 
     function createRGBColor(r, g, b) {
@@ -642,6 +4401,138 @@ var PathBuilder = (function () {
         col.green = g;
         col.blue = b;
         return col;
+    }
+
+    /**
+     * Unified Cut Stroke Determination & Styling.
+     * Applies uniform strokeWidth, strokeColor, and filled=false to PathItems or CompoundPathItems.
+     * Always executed AFTER compound path construction and grouping to guarantee 100% stroke consistency.
+     */
+    function applyCutStyle(item, strokeWidth, strokeColor) {
+        var sw = (strokeWidth !== undefined) ? strokeWidth : STYLES.DEFAULT_CUT_WIDTH;
+        var sc = strokeColor || STYLES.COLOR_CUT;
+
+        item.stroked = true;
+        item.strokeColor = sc;
+        item.strokeWidth = sw;
+        item.filled = false;
+
+        // If CompoundPathItem, also strictly apply to each child pathItem to override AI defaults
+        if (item.typename === "CompoundPathItem" && item.pathItems) {
+            for (var p = 0; p < item.pathItems.length; p++) {
+                item.pathItems[p].stroked = true;
+                item.pathItems[p].strokeColor = sc;
+                item.pathItems[p].strokeWidth = sw;
+                item.pathItems[p].filled = false;
+            }
+        }
+    }
+
+    /**
+     * Unified Guide Stroke Determination & Styling.
+     */
+    function applyGuideStyle(item, strokeWidth, strokeColor, dashes) {
+        var sw = (strokeWidth !== undefined) ? strokeWidth : STYLES.DEFAULT_GUIDE_WIDTH;
+        var sc = strokeColor || STYLES.COLOR_GUIDE;
+
+        item.stroked = true;
+        item.strokeColor = sc;
+        item.strokeWidth = sw;
+        item.filled = false;
+        if (dashes && dashes.length > 0) {
+            item.strokeDashes = dashes;
+        }
+    }
+
+    /**
+     * Resolves gear center coordinates for branched train nodes based on placementRef and target coordinates.
+     * 
+     * @param {Array} trainNodes Array of resolved node objects
+     * @param {Object} options Options containing placementRef, targetXmm, targetYmm, baseOrigin
+     * @param {Array} abRect Artboard rect [left, top, right, bottom] in pt
+     * @returns {Array} Array of [xPt, yPt]
+     */
+    function resolveTrainCenters(trainNodes, options, abRect) {
+        options = options || {};
+        var abWidth = abRect[2] - abRect[0];
+        var abHeight = abRect[1] - abRect[3];
+        var abCenter = [abRect[0] + abWidth / 2.0, abRect[1] - abHeight / 2.0];
+
+        var placementRef = options.placementRef || "original";
+        var hasOrigCircles = (trainNodes.length > 0 && !!trainNodes[0].origCircle);
+
+        // Calculate initial centers in pt
+        var rawCenters = [];
+        for (var i = 0; i < trainNodes.length; i++) {
+            var nd = trainNodes[i];
+            if (hasOrigCircles) {
+                // nd.centerPt is already absolute artboard coordinate
+                rawCenters.push([nd.centerPt[0], nd.centerPt[1]]);
+            } else {
+                // Manual input: nd.centerPt is relative to G1 (which is at [0, 0])
+                var origBase = options.baseOrigin || abCenter;
+                rawCenters.push([origBase[0] + nd.centerPt[0], origBase[1] + nd.centerPt[1]]);
+            }
+        }
+
+        if (placementRef === "original" && hasOrigCircles) {
+            return rawCenters;
+        }
+
+        // Target position in pt (relative to active artboard top-left)
+        var targetXPt = (options.targetXmm !== undefined && !isNaN(options.targetXmm)) ? (abRect[0] + options.targetXmm * MM_TO_PT) : abCenter[0];
+        var targetYPt = (options.targetYmm !== undefined && !isNaN(options.targetYmm)) ? (abRect[1] - options.targetYmm * MM_TO_PT) : abCenter[1];
+
+        // Reference point P_ref
+        var refPt = [rawCenters[0][0], rawCenters[0][1]];
+        if (placementRef === "bbox") {
+            var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (var i = 0; i < trainNodes.length; i++) {
+                var c = rawCenters[i];
+                var r = (trainNodes[i].gearData && trainNodes[i].gearData.tipRadiusPt) ? trainNodes[i].gearData.tipRadiusPt : (trainNodes[i].z * 2.0 * MM_TO_PT / 2.0);
+                if (c[0] - r < minX) minX = c[0] - r;
+                if (c[0] + r > maxX) maxX = c[0] + r;
+                if (c[1] - r < minY) minY = c[1] - r;
+                if (c[1] + r > maxY) maxY = c[1] + r;
+            }
+            if (minX !== Infinity) {
+                refPt = [(minX + maxX) / 2.0, (minY + maxY) / 2.0];
+            }
+        }
+
+        // Shift vector: Delta = Target - Reference
+        var deltaX = targetXPt - refPt[0];
+        var deltaY = targetYPt - refPt[1];
+
+        var finalCenters = [];
+        for (var i = 0; i < rawCenters.length; i++) {
+            finalCenters.push([
+                Math.round((rawCenters[i][0] + deltaX) * 10000) / 10000,
+                Math.round((rawCenters[i][1] + deltaY) * 10000) / 10000
+            ]);
+        }
+        return finalCenters;
+    }
+
+    /**
+     * Resolves the system center for simple mechanisms (pairs, planetary sets, racks).
+     */
+    function resolveSystemCenter(options, abCenter, bboxShiftPt) {
+        options = options || {};
+        var placementRef = options.placementRef || "original";
+        if (placementRef === "original" && options.baseOrigin) {
+            return options.baseOrigin;
+        }
+        if (options.targetXmm !== undefined && options.targetYmm !== undefined && placementRef !== "original") {
+            var tx = options.targetXmm * MM_TO_PT;
+            var ty = options.targetYmm * MM_TO_PT;
+            if (placementRef === "bbox" && bboxShiftPt) {
+                tx -= bboxShiftPt[0];
+                ty -= bboxShiftPt[1];
+            }
+            return [tx, ty];
+        }
+        return options.baseOrigin || abCenter;
     }
 
     /**
@@ -675,6 +4566,13 @@ var PathBuilder = (function () {
         var cosR = Math.cos(rotRad);
         var sinR = Math.sin(rotRad);
 
+        // Ensure parent layer is unlocked and active
+        try {
+            if (pathItem.layer) {
+                unlockAndShowLayer(pathItem.layer);
+            }
+        } catch (eLyr) {}
+
         function tf(coord) {
             var px = coord[0] * scale;
             var py = coord[1] * scale;
@@ -692,11 +4590,13 @@ var PathBuilder = (function () {
             pt.anchor = tf(nd.anchor);
             pt.leftDirection = tf(nd.leftDirection);
             pt.rightDirection = tf(nd.rightDirection);
-            if (nd.pointType === "CORNER") {
-                pt.pointType = PointType.CORNER;
-            } else {
-                pt.pointType = PointType.SMOOTH;
-            }
+            try {
+                if (nd.pointType === "CORNER") {
+                    pt.pointType = (typeof PointType !== "undefined" && PointType) ? PointType.CORNER : 2;
+                } else {
+                    pt.pointType = (typeof PointType !== "undefined" && PointType) ? PointType.SMOOTH : 1;
+                }
+            } catch (ePT) {}
         }
     }
 
@@ -721,17 +4621,107 @@ var PathBuilder = (function () {
     }
 
     /**
+     * Draw Shaft Hole Item (Round, D-Cut, Keyway)
+     * Supports Bezier Nodes, Polylines, and Native Ellipse
+     */
+    function drawShaftHoleItem(parentGroup, center, gearData, rotRad, gearName, options) {
+        if (!gearData || !gearData.hasHole) return null;
+
+        var shaftHole = gearData.shaftHole;
+        var holeRadiusPt = gearData.holeRadiusPt || ((gearData.shaftDiameter || 0) / 2.0 * MM_TO_PT);
+        if (holeRadiusPt <= 0) return null;
+
+        var shaftType = (shaftHole && shaftHole.shaftType) ? shaftHole.shaftType : "ROUND";
+
+        var holePath = null;
+        if (shaftType === "ROUND") {
+            // High-speed native Illustrator ellipse
+            holePath = parentGroup.pathItems.ellipse(
+                center[1] + holeRadiusPt,
+                center[0] - holeRadiusPt,
+                holeRadiusPt * 2,
+                holeRadiusPt * 2
+            );
+        } else if (shaftHole && shaftHole.nodes && shaftHole.nodes.length > 0) {
+            // D-Cut or Keyway via Bezier Nodes
+            holePath = parentGroup.pathItems.add();
+            var holeRot = (options && options.shaftFixedAngle) ? 0.0 : (rotRad || 0.0);
+            applyBezierNodes(holePath, shaftHole.nodes, center, holeRot, MM_TO_PT);
+            holePath.closed = true;
+        } else if (shaftHole && shaftHole.points && shaftHole.points.length > 0) {
+            // Polyline fallback
+            holePath = parentGroup.pathItems.add();
+            var holeRot = (options && options.shaftFixedAngle) ? 0.0 : (rotRad || 0.0);
+            var pts = transformPoints(shaftHole.points, center, holeRot);
+            setPathCoords(holePath, pts);
+            holePath.closed = true;
+        } else {
+            // Fallback to round ellipse
+            holePath = parentGroup.pathItems.ellipse(
+                center[1] + holeRadiusPt,
+                center[0] - holeRadiusPt,
+                holeRadiusPt * 2,
+                holeRadiusPt * 2
+            );
+        }
+
+        if (holePath) {
+            holePath.name = gearName + "_ShaftHole_" + shaftType;
+        }
+        return holePath;
+    }
+
+    /**
+     * Draw Coaxial Alignment Pin Holes
+     */
+    function drawAlignmentPinHoles(parentGroup, center, gearData, rotRad, gearName, options) {
+        var pinHolesData = (gearData && gearData.pinHoles) ? gearData.pinHoles : ((options && options.pinHoles) ? options.pinHoles : null);
+        if (!pinHolesData || !pinHolesData.valid || !pinHolesData.holes || pinHolesData.holes.length === 0) {
+            return [];
+        }
+
+        var pinPaths = [];
+        var cosR = Math.cos(rotRad || 0.0);
+        var sinR = Math.sin(rotRad || 0.0);
+
+        for (var p = 0; p < pinHolesData.holes.length; p++) {
+            var pin = pinHolesData.holes[p];
+            var px = pin.center[0] * MM_TO_PT;
+            var py = pin.center[1] * MM_TO_PT;
+            var rx = px * cosR - py * sinR;
+            var ry = px * sinR + py * cosR;
+
+            var pinCenterX = center[0] + rx;
+            var pinCenterY = center[1] + ry;
+            var pinRadiusPt = pin.radius * MM_TO_PT;
+
+            var pPath = parentGroup.pathItems.ellipse(
+                pinCenterY + pinRadiusPt,
+                pinCenterX - pinRadiusPt,
+                pinRadiusPt * 2,
+                pinRadiusPt * 2
+            );
+            pPath.name = gearName + "_PinHole_" + (p + 1);
+            pinPaths.push(pPath);
+        }
+        return pinPaths;
+    }
+
+    /**
      * Draw a single gear into Illustrator
+     * Strict Pipeline: 1. Sizing -> 2. Grouping & Compound Path -> 3. Stroke & Style Determination
      */
     function drawGear(doc, targetLayer, center, gearData, rotationDeg, gearName, options) {
-        var mode = (options && options.drawMode) || "normal"; // "normal" | "test_teeth" | "test_disassembled"
-        var cutColor = createRGBColor(255, 0, 0);          // Red
-        var rootColor = createRGBColor(0, 100, 220);       // Blue for root circle
-        var tipArcColor = createRGBColor(0, 180, 220);     // Cyan for tip arc
-        var involuteColor = createRGBColor(220, 0, 180);   // Magenta for involute
-        var filletColor = createRGBColor(255, 140, 0);     // Orange for trochoid fillet
-        var guideColor = createRGBColor(0, 150, 0);        // Green for pitch circle
-        var textColor = createRGBColor(0, 0, 0);
+        unlockAndShowLayer(targetLayer);
+        try { doc.activeLayer = targetLayer; } catch (eAL) {}
+        options = options || {};
+        var outputIndividualTeeth = !!(options.outputIndividualTeeth || options.individualTeeth);
+        var mode = options.drawMode || (outputIndividualTeeth ? "test_teeth" : "normal"); // "normal" | "test_teeth" | "test_disassembled"
+        var cutStrokeWidth = (options.cutStrokeWidth !== undefined) ? options.cutStrokeWidth : STYLES.DEFAULT_CUT_WIDTH;
+        var guideStrokeWidth = (options.guideStrokeWidth !== undefined) ? options.guideStrokeWidth : STYLES.DEFAULT_GUIDE_WIDTH;
+        var cutColor = options.cutColor || STYLES.COLOR_CUT;
+        var guideColor = options.guideColor || STYLES.COLOR_GUIDE;
+        var textColor = STYLES.COLOR_TEXT;
 
         var gearGroup = targetLayer.groupItems.add();
         gearGroup.name = gearName + (mode !== "normal" ? (" [" + mode + "]") : "");
@@ -740,15 +4730,13 @@ var PathBuilder = (function () {
         var toothPitchAngle = (2.0 * Math.PI) / gearData.z;
 
         if (mode === "normal") {
-            // === 1. Normal Mode: Closed full gear contour ===
+            // === STEP 1: Sizing & Coordinate Generation ===
             var outerPath = gearGroup.pathItems.add();
             outerPath.name = gearName + "_Contour";
 
             if (gearData.pathQuality !== "polyline" && gearData.outerNodes && gearData.outerNodes.length > 0) {
-                // Bezier curve contour (Recommended or Minimal)
                 applyBezierNodes(outerPath, gearData.outerNodes, center, rotOffsetRad, 1.0);
             } else {
-                // Polyline contour fallback
                 var rotatedPoints = [];
                 var cosR = Math.cos(rotOffsetRad);
                 var sinR = Math.sin(rotOffsetRad);
@@ -765,40 +4753,71 @@ var PathBuilder = (function () {
                 }
                 setPathCoords(outerPath, rotatedPoints);
             }
-
             outerPath.closed = true;
-            outerPath.stroked = true;
-            outerPath.strokeColor = cutColor;
-            outerPath.strokeWidth = 0.5;
-            outerPath.filled = false;
+
+            var holePath = drawShaftHoleItem(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+            var pinPaths = drawAlignmentPinHoles(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+
+            // === STEP 2: Grouping & Compound Path Construction ===
+            var mainCutItem = outerPath;
+            var createCompound = (options.createCompound !== undefined) ? options.createCompound : true;
+            if ((holePath || (pinPaths && pinPaths.length > 0)) && createCompound) {
+                try {
+                    var compoundGear = gearGroup.compoundPathItems.add();
+                    compoundGear.name = gearName + "_Body";
+                    if (holePath) {
+                        holePath.moveToBeginning(compoundGear);
+                    }
+                    if (pinPaths && pinPaths.length > 0) {
+                        for (var pi = 0; pi < pinPaths.length; pi++) {
+                            pinPaths[pi].moveToBeginning(compoundGear);
+                        }
+                    }
+                    outerPath.moveToBeginning(compoundGear);
+                    mainCutItem = compoundGear;
+                } catch (e) {
+                    mainCutItem = outerPath;
+                }
+            }
+
+            // === STEP 3: Stroke Determination & Style Application ===
+            applyCutStyle(mainCutItem, cutStrokeWidth, cutColor);
+            if (holePath && mainCutItem !== holePath && mainCutItem.typename !== "CompoundPathItem") {
+                applyCutStyle(holePath, cutStrokeWidth, cutColor);
+            }
+            if (pinPaths && pinPaths.length > 0 && mainCutItem.typename !== "CompoundPathItem") {
+                for (var pj = 0; pj < pinPaths.length; pj++) {
+                    applyCutStyle(pinPaths[pj], cutStrokeWidth, cutColor);
+                }
+            }
 
         } else if (mode === "test_teeth") {
-            // === 2. Test Mode: Single tooth x z (connected per tooth) + root circle ===
+            // === 2. Individual Teeth Mode: Single tooth x z (independent paths) + root circle + shaft hole ===
             var teethGroup = gearGroup.groupItems.add();
             teethGroup.name = gearName + "_IndividualTeeth";
 
-            for (var t = 0; t < gearData.z; t++) {
+            var isMut = !!(gearData.isMutilated && gearData.activeTeeth < gearData.z);
+            var teethCount = isMut ? gearData.activeTeeth : gearData.z;
+            var startToothIdx = (isMut && gearData.startTooth) ? (gearData.startTooth - 1) : 0;
+
+            for (var step = 0; step < teethCount; step++) {
+                var t = (startToothIdx + step) % gearData.z;
                 var toothRot = rotOffsetRad + (t * toothPitchAngle);
                 var toothPath = teethGroup.pathItems.add();
                 toothPath.name = gearName + "_Tooth_" + (t + 1);
 
                 if (gearData.pathQuality !== "polyline" && gearData.singleToothNodes && gearData.singleToothNodes.length > 0) {
-                    // Bezier single tooth profile
                     applyBezierNodes(toothPath, gearData.singleToothNodes, center, toothRot, MM_TO_PT);
                 } else {
-                    // Polyline single tooth profile
                     var toothPts = transformPoints(gearData.singleToothCombined, center, toothRot);
                     setPathCoords(toothPath, toothPts);
                 }
 
-                toothPath.closed = false; // Open tooth profile
-                toothPath.stroked = true;
-                toothPath.strokeColor = cutColor;
-                toothPath.strokeWidth = 0.5;
-                toothPath.filled = false;
+                toothPath.closed = false;
+                applyCutStyle(toothPath, cutStrokeWidth, cutColor);
             }
 
-            // Dedicated Root Circle (Dedendum Circle)
+            // Dedicated Root Circle (for trimming, joining, or manual pathfinder operations)
             var rootCircle = gearGroup.pathItems.ellipse(
                 center[1] + gearData.rootRadiusPt,
                 center[0] - gearData.rootRadiusPt,
@@ -806,13 +4825,21 @@ var PathBuilder = (function () {
                 gearData.rootRadiusPt * 2
             );
             rootCircle.name = gearName + "_RootCircle_df" + gearData.rootDiameter.toFixed(1);
-            rootCircle.stroked = true;
-            rootCircle.strokeColor = rootColor;
-            rootCircle.strokeWidth = 0.5;
-            rootCircle.filled = false;
+            applyCutStyle(rootCircle, cutStrokeWidth, cutColor);
+
+            // Shaft Hole & Alignment Pin Holes for Individual Teeth Mode
+            var holePathInd = drawShaftHoleItem(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+            if (holePathInd) applyCutStyle(holePathInd, cutStrokeWidth, cutColor);
+
+            var pinPathsInd = drawAlignmentPinHoles(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+            if (pinPathsInd && pinPathsInd.length > 0) {
+                for (var pki = 0; pki < pinPathsInd.length; pki++) {
+                    applyCutStyle(pinPathsInd[pki], cutStrokeWidth, cutColor);
+                }
+            }
 
         } else if (mode === "test_disassembled") {
-            // === 3. Test Mode (Disassembled): Tip arc, Involutes, Fillets as raw independent paths ===
+            // === 3. Test Mode (Disassembled): Tip arc, Involutes, Fillets ===
             var disGroup = gearGroup.groupItems.add();
             disGroup.name = gearName + "_DisassembledParts";
 
@@ -828,50 +4855,35 @@ var PathBuilder = (function () {
                 var pTip = singleToothGroup.pathItems.add();
                 pTip.name = "TipArc";
                 setPathCoords(pTip, tipPts);
-                pTip.stroked = true;
-                pTip.strokeColor = tipArcColor;
-                pTip.strokeWidth = 0.75;
-                pTip.filled = false;
+                applyCutStyle(pTip, cutStrokeWidth, tipArcColor);
 
                 // B. Left Involute
                 var leftInvPts = transformPoints(segs.leftInvolute, center, tRot);
                 var pLInv = singleToothGroup.pathItems.add();
                 pLInv.name = "LeftInvolute";
                 setPathCoords(pLInv, leftInvPts);
-                pLInv.stroked = true;
-                pLInv.strokeColor = involuteColor;
-                pLInv.strokeWidth = 0.5;
-                pLInv.filled = false;
+                applyCutStyle(pLInv, cutStrokeWidth, involuteColor);
 
                 // C. Right Involute
                 var rightInvPts = transformPoints(segs.rightInvolute, center, tRot);
                 var pRInv = singleToothGroup.pathItems.add();
                 pRInv.name = "RightInvolute";
                 setPathCoords(pRInv, rightInvPts);
-                pRInv.stroked = true;
-                pRInv.strokeColor = involuteColor;
-                pRInv.strokeWidth = 0.5;
-                pRInv.filled = false;
+                applyCutStyle(pRInv, cutStrokeWidth, involuteColor);
 
                 // D. Left Trochoid Fillet
                 var leftFilletPts = transformPoints(segs.leftFillet, center, tRot);
                 var pLFil = singleToothGroup.pathItems.add();
                 pLFil.name = "LeftTrochoidFillet";
                 setPathCoords(pLFil, leftFilletPts);
-                pLFil.stroked = true;
-                pLFil.strokeColor = filletColor;
-                pLFil.strokeWidth = 0.5;
-                pLFil.filled = false;
+                applyCutStyle(pLFil, cutStrokeWidth, filletColor);
 
                 // E. Right Trochoid Fillet
                 var rightFilletPts = transformPoints(segs.rightFillet, center, tRot);
                 var pRFil = singleToothGroup.pathItems.add();
                 pRFil.name = "RightTrochoidFillet";
                 setPathCoords(pRFil, rightFilletPts);
-                pRFil.stroked = true;
-                pRFil.strokeColor = filletColor;
-                pRFil.strokeWidth = 0.5;
-                pRFil.filled = false;
+                applyCutStyle(pRFil, cutStrokeWidth, filletColor);
             }
 
             // Dedicated Root Circle
@@ -882,29 +4894,24 @@ var PathBuilder = (function () {
                 gearData.rootRadiusPt * 2
             );
             rootCircleD.name = gearName + "_RootCircle_df" + gearData.rootDiameter.toFixed(1);
-            rootCircleD.stroked = true;
-            rootCircleD.strokeColor = rootColor;
-            rootCircleD.strokeWidth = 0.5;
-            rootCircleD.filled = false;
+            applyGuideStyle(rootCircleD, guideStrokeWidth, STYLES.COLOR_CUT);
         }
 
-        // 4. Draw shaft hole (independent circle path)
-        if (gearData.hasHole && gearData.holeRadiusPt > 0) {
-            var hr = gearData.holeRadiusPt;
-            var holePath = gearGroup.pathItems.ellipse(
-                center[1] + hr,
-                center[0] - hr,
-                hr * 2,
-                hr * 2
-            );
-            holePath.name = gearName + "_ShaftHole";
-            holePath.stroked = true;
-            holePath.strokeColor = cutColor;
-            holePath.strokeWidth = 0.5;
-            holePath.filled = false;
+        // Draw shaft hole & pin holes in test mode (in normal mode, it was already handled and compounded)
+        if (mode !== "normal" && gearData.hasHole) {
+            var testHole = drawShaftHoleItem(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+            if (testHole) {
+                applyCutStyle(testHole, cutStrokeWidth, cutColor);
+            }
+            var testPins = drawAlignmentPinHoles(gearGroup, center, gearData, rotOffsetRad, gearName, options);
+            if (testPins && testPins.length > 0) {
+                for (var tp = 0; tp < testPins.length; tp++) {
+                    applyCutStyle(testPins[tp], cutStrokeWidth, cutColor);
+                }
+            }
         }
 
-        // 5. Draw Pitch Circle & Crosshair Guides
+        // Guides with uniform guide stroke
         if (options && options.drawGuides) {
             var guideGroup = gearGroup.groupItems.add();
             guideGroup.name = gearName + "_Guides";
@@ -917,33 +4924,25 @@ var PathBuilder = (function () {
                 pr * 2
             );
             pitchCircle.name = "PitchCircle_d" + gearData.pitchDiameter.toFixed(1);
-            pitchCircle.stroked = true;
-            pitchCircle.strokeColor = guideColor;
-            pitchCircle.strokeWidth = 0.5;
-            pitchCircle.strokeDashes = [4, 4];
-            pitchCircle.filled = false;
+            applyGuideStyle(pitchCircle, guideStrokeWidth, guideColor, [4, 4]);
 
             var crossLen = Math.min(pr * 0.4, 15);
-            var hLine = guideGroup.pathItems.add();
+            var crossCompound = guideGroup.compoundPathItems.add();
+            crossCompound.name = gearName + "_CenterCross";
+            var hLine = crossCompound.pathItems.add();
             hLine.setEntirePath([
                 [center[0] - crossLen, center[1]],
                 [center[0] + crossLen, center[1]]
             ]);
-            hLine.stroked = true;
-            hLine.strokeColor = guideColor;
-            hLine.strokeWidth = 0.5;
-
-            var vLine = guideGroup.pathItems.add();
+            var vLine = crossCompound.pathItems.add();
             vLine.setEntirePath([
                 [center[0], center[1] - crossLen],
                 [center[0], center[1] + crossLen]
             ]);
-            vLine.stroked = true;
-            vLine.strokeColor = guideColor;
-            vLine.strokeWidth = 0.5;
+            applyGuideStyle(crossCompound, guideStrokeWidth, guideColor);
         }
 
-        // 6. Draw specifications label
+        // Text label
         if (options && options.drawText) {
             try {
                 var textFrame = gearGroup.textFrames.add();
@@ -963,337 +4962,3656 @@ var PathBuilder = (function () {
      * Draw meshing pair
      */
     function drawMeshingPair(doc, params) {
-        var layer = getOrCreateLayer(doc, "GearDrawer");
+        var options = params.options || {};
+        var naming = options.naming || InvoluteMath.NAMING_PRESETS.standard;
+        var trainId = options.trainId || "T1";
 
-        var artboard = doc.artboards[doc.artboards.getActiveArtboardIndex()];
-        var abRect = artboard.artboardRect;
+        // 1. Main & Sublayer (e.g. "T1" -> "T1_1")
+        var mainLayerName = InvoluteMath.formatName(naming.mainLayer, { train: trainId, m: params.gear1Data.m });
+        var mainLayer = getOrCreateLayer(doc, mainLayerName);
+
+        var subLayerName = InvoluteMath.formatName(naming.subLayer, { train: trainId, layer: 1, m: params.gear1Data.m });
+        var targetLayer = getOrCreateLayer(doc, subLayerName, mainLayer);
+
+        var abRect = getActiveArtboardRect(doc);
         var abWidth = abRect[2] - abRect[0];
         var abHeight = abRect[1] - abRect[3];
 
-        var g1Center = [abRect[0] + abWidth / 2 - params.meshing.gear2OffsetX / 2, abRect[1] - abHeight / 2 - params.meshing.gear2OffsetY / 2];
+        var abCenter = [abRect[0] + abWidth / 2, abRect[1] - abHeight / 2];
+        var bboxShift = [params.meshing.gear2OffsetX / 2, params.meshing.gear2OffsetY / 2];
+        var g1Center = resolveSystemCenter(params.options, [abCenter[0] - bboxShift[0], abCenter[1] - bboxShift[1]], bboxShift);
         var g2Center = [g1Center[0] + params.meshing.gear2OffsetX, g1Center[1] + params.meshing.gear2OffsetY];
+
+        var g1Name = InvoluteMath.formatName(naming.gearGroup, {
+            train: trainId,
+            layer: 1,
+            id: "G1",
+            parentId: "Root",
+            role: "Spur",
+            m: params.gear1Data.m,
+            z: params.gear1Data.z,
+            d: params.gear1Data.pitchDiameter,
+            pcd: params.gear1Data.pitchDiameter,
+            da: params.gear1Data.tipRadiusMm * 2,
+            shaft: params.gear1Data.shaftDiameter
+        });
+
+        var g2Name = InvoluteMath.formatName(naming.gearGroup, {
+            train: trainId,
+            layer: 1,
+            id: "G2",
+            parentId: "G1",
+            role: "Spur",
+            m: params.gear2Data.m,
+            z: params.gear2Data.z,
+            d: params.gear2Data.pitchDiameter,
+            pcd: params.gear2Data.pitchDiameter,
+            da: params.gear2Data.tipRadiusMm * 2,
+            shaft: params.gear2Data.shaftDiameter
+        });
 
         var g1Group = drawGear(
             doc,
-            layer,
+            targetLayer,
             g1Center,
             params.gear1Data,
             params.meshing.gear1RotationDeg,
-            "Gear_1_z" + params.gear1Data.z,
+            g1Name,
             params.options
         );
 
         var g2Group = drawGear(
             doc,
-            layer,
+            targetLayer,
             g2Center,
             params.gear2Data,
             params.meshing.gear2RotationDeg,
-            "Gear_2_z" + params.gear2Data.z,
+            g2Name,
+            params.options
+        );
+
+        // 2. Generate Drawing / Skeleton Layer (e.g. "T1_dwg")
+        if (options.drawDwgLayer !== false) {
+            var dwgLayerName = InvoluteMath.formatName(naming.dwgLayer, {
+                train: trainId,
+                m: params.gear1Data.m
+            });
+            var dwgLayer = getOrCreateLayer(doc, dwgLayerName);
+            drawDwgSkeleton(dwgLayer, [
+                { id: "G1", center: g1Center, m: params.gear1Data.m, z: params.gear1Data.z, pitchRadiusPt: params.gear1Data.pitchRadiusPt, tipRadiusPt: params.gear1Data.tipRadiusPt, rootRadiusPt: params.gear1Data.rootRadiusPt },
+                { id: "G2", center: g2Center, m: params.gear2Data.m, z: params.gear2Data.z, pitchRadiusPt: params.gear2Data.pitchRadiusPt, tipRadiusPt: params.gear2Data.tipRadiusPt, rootRadiusPt: params.gear2Data.rootRadiusPt }
+            ], [
+                [g1Center, g2Center, "G1", "G2"]
+            ], options);
+        }
+
+        return targetLayer;
+    }
+
+    /**
+     * Draw a rack into Illustrator
+     * Strict Pipeline: 1. Sizing -> 2. Grouping -> 3. Stroke & Style Determination
+     */
+    function drawRack(doc, targetLayer, origin, rackData, rotationDeg, shiftPt, rackName, options) {
+        unlockAndShowLayer(targetLayer);
+        try { doc.activeLayer = targetLayer; } catch (eAL) {}
+        options = options || {};
+        var cutStrokeWidth = (options.cutStrokeWidth !== undefined) ? options.cutStrokeWidth : STYLES.DEFAULT_CUT_WIDTH;
+        var guideStrokeWidth = (options.guideStrokeWidth !== undefined) ? options.guideStrokeWidth : STYLES.DEFAULT_GUIDE_WIDTH;
+        var cutColor = options.cutColor || STYLES.COLOR_CUT;
+        var guideColor = options.guideColor || STYLES.COLOR_GUIDE;
+        var textColor = STYLES.COLOR_TEXT;
+
+        var rackGroup = targetLayer.groupItems.add();
+        rackGroup.name = rackName || ("Rack_m" + rackData.m + "_z" + rackData.zRack);
+
+        var rotRad = (rotationDeg || 0) * (Math.PI / 180.0);
+        var shift = 0;
+        if (typeof shiftPt === "number") {
+            shift = shiftPt;
+        } else if (shiftPt && typeof shiftPt[0] === "number") {
+            shift = shiftPt[0];
+        }
+        if (isNaN(shift)) {
+            shift = 0;
+        }
+
+        var cosR = Math.cos(rotRad);
+        var sinR = Math.sin(rotRad);
+
+        // === STEP 1: Sizing & Offset Calculation ===
+        var ox = (origin && typeof origin[0] === "number" && !isNaN(origin[0])) ? origin[0] : 0;
+        var oy = (origin && typeof origin[1] === "number" && !isNaN(origin[1])) ? origin[1] : 0;
+        var cx = ox + shift * cosR;
+        var cy = oy + shift * sinR;
+
+        // === STEP 2: Topology / Path Creation ===
+        var contour = rackGroup.pathItems.add();
+        contour.name = rackGroup.name + "_Contour";
+        applyBezierNodes(contour, rackData.outerNodes, [cx, cy], rotRad, 1.0);
+        contour.closed = true;
+
+        // === STEP 3: Stroke Determination & Style Application ===
+        applyCutStyle(contour, cutStrokeWidth, cutColor);
+
+        // Guides with uniform guide stroke
+        if (options.drawGuides !== false && rackData.pitchLinePt) {
+            var guideGroup = rackGroup.groupItems.add();
+            guideGroup.name = rackGroup.name + "_Guides";
+
+            var pitchLine = guideGroup.pathItems.add();
+            pitchLine.name = "PitchLine";
+            var pStart = rackData.pitchLinePt.start;
+            var pEnd = rackData.pitchLinePt.end;
+
+            function tfGuide(p) {
+                var rx = p[0] * cosR - p[1] * sinR;
+                var ry = p[0] * sinR + p[1] * cosR;
+                return [cx + rx, cy + ry];
+            }
+
+            setPathCoords(pitchLine, [tfGuide(pStart), tfGuide(pEnd)]);
+            applyGuideStyle(pitchLine, guideStrokeWidth, guideColor, [3, 2]);
+        }
+
+        // Text label
+        if (options.drawText !== false) {
+            try {
+                var tf = rackGroup.textFrames.add();
+                tf.contents = "Rack: m=" + rackData.m + " z=" + rackData.zRack + " L=" + Math.round(rackData.totalLengthMm * 10) / 10 + "mm";
+                var hfPt = ((rackData.hfMm !== undefined) ? rackData.hfMm : (1.25 * (rackData.m || 2.0))) * MM_TO_PT;
+                var backHeightPt = ((rackData.backHeightMm !== undefined) ? rackData.backHeightMm : (2.5 * (rackData.m || 2.0))) * MM_TO_PT;
+                var backPt = [0, -(hfPt + backHeightPt) - 10];
+                var tfPos = [cx + backPt[0] * cosR - backPt[1] * sinR, cy + backPt[0] * sinR + backPt[1] * cosR];
+                var leftVal = tfPos[0] - 50;
+                var topVal = tfPos[1];
+                tf.left = (!isNaN(leftVal)) ? leftVal : (ox - 50);
+                tf.top = (!isNaN(topVal)) ? topVal : oy;
+                tf.textRange.characterAttributes.size = 8;
+                tf.textRange.characterAttributes.fillColor = textColor;
+            } catch (eTf) {
+                // Ignore text frame errors
+            }
+        }
+
+        return rackGroup;
+    }
+
+    /**
+     * Draw a meshing Rack & Pinion pair
+     */
+    function drawRackAndPinionPair(doc, params) {
+        var layer = getOrCreateLayer(doc, "GearDrawer");
+
+        var abRect = getActiveArtboardRect(doc);
+        var abWidth = abRect[2] - abRect[0];
+        var abHeight = abRect[1] - abRect[3];
+
+        var pinionCenter = resolveSystemCenter(params.options, [abRect[0] + abWidth / 2, abRect[1] - abHeight / 2 + params.rackMeshing.pinionRadiusPt / 2]);
+
+        // Draw Pinion
+        var pinionGroup = drawGear(
+            doc,
+            layer,
+            pinionCenter,
+            params.pinionData,
+            params.rackMeshing.pinionRotationDeg,
+            "Pinion_z" + params.pinionData.z,
+            params.options
+        );
+
+        // Rack contact origin:
+        var rackOrigin = [
+            pinionCenter[0] + params.rackMeshing.contactPointX,
+            pinionCenter[1] + params.rackMeshing.contactPointY
+        ];
+
+        // Draw Rack
+        var rackGroup = drawRack(
+            doc,
+            layer,
+            rackOrigin,
+            params.rackData,
+            params.rackMeshing.rackRotationDeg,
+            params.rackMeshing.rackShiftPt,
+            "Rack_z" + params.rackData.zRack,
             params.options
         );
 
         var pairGroup = layer.groupItems.add();
-        pairGroup.name = "GearPair_m" + params.gear1Data.m + "_z" + params.gear1Data.z + "x" + params.gear2Data.z;
-        g1Group.moveToBeginning(pairGroup);
-        g2Group.moveToBeginning(pairGroup);
+        pairGroup.name = "RackAndPinion_m" + params.pinionData.m + "_z" + params.pinionData.z + "xRack" + params.rackData.zRack;
+        pinionGroup.moveToBeginning(pairGroup);
+        rackGroup.moveToBeginning(pairGroup);
 
         return pairGroup;
+    }
+
+    /**
+     * Draw an Internal Ring Gear in Illustrator document.
+     * Strict Pipeline: 1. Sizing -> 2. Grouping & Compound Path -> 3. Stroke & Style Determination
+     */
+    function drawInternalGear(doc, targetLayer, center, internalData, rotationDeg, gearName, options) {
+        unlockAndShowLayer(targetLayer);
+        try { doc.activeLayer = targetLayer; } catch (eAL) {}
+        options = options || {};
+        var cutStrokeWidth = (options.cutStrokeWidth !== undefined) ? options.cutStrokeWidth : STYLES.DEFAULT_CUT_WIDTH;
+        var guideStrokeWidth = (options.guideStrokeWidth !== undefined) ? options.guideStrokeWidth : STYLES.DEFAULT_GUIDE_WIDTH;
+        var cutColor = options.cutColor || STYLES.COLOR_CUT;
+        var guideColor = options.guideColor || STYLES.COLOR_GUIDE;
+        var textColor = STYLES.COLOR_TEXT;
+        var createCompound = (options.createCompound !== undefined) ? options.createCompound : true;
+
+        var gearGroup = targetLayer.groupItems.add();
+        gearGroup.name = gearName || ("InternalGear_m" + internalData.m + "_z" + internalData.z);
+
+        var rotRad = (rotationDeg || 0) * (Math.PI / 180.0);
+
+        // === STEP 1: Sizing & Path Geometry Generation ===
+        var innerContour = gearGroup.pathItems.add();
+        innerContour.name = gearGroup.name + "_InnerContour";
+        applyBezierNodes(innerContour, internalData.innerContourNodes, center, rotRad, 1.0);
+        innerContour.closed = true;
+
+        var rimContour = gearGroup.pathItems.add();
+        rimContour.name = gearGroup.name + "_RimOuter";
+        applyBezierNodes(rimContour, internalData.rimCircleNodes, center, rotRad, 1.0);
+        rimContour.closed = true;
+
+        // === STEP 2: Grouping & Compound Path Construction ===
+        var mainCutItem = rimContour;
+        if (createCompound) {
+            try {
+                var compoundPath = gearGroup.compoundPathItems.add();
+                compoundPath.name = gearGroup.name + "_Ring";
+                innerContour.moveToBeginning(compoundPath);
+                rimContour.moveToBeginning(compoundPath);
+                mainCutItem = compoundPath;
+            } catch (e) {
+                // If compound path fails in older AI version, keep as individual paths in gearGroup
+                mainCutItem = rimContour;
+            }
+        }
+
+        // === STEP 3: Stroke Determination & Style Application ===
+        applyCutStyle(mainCutItem, cutStrokeWidth, cutColor);
+        if (mainCutItem.typename !== "CompoundPathItem") {
+            applyCutStyle(innerContour, cutStrokeWidth, cutColor);
+            applyCutStyle(rimContour, cutStrokeWidth, cutColor);
+        }
+
+        // Guides with uniform guide stroke
+        if (options.drawGuides !== false) {
+            var guideGroup = gearGroup.groupItems.add();
+            guideGroup.name = gearGroup.name + "_Guides";
+
+            // Pitch Circle (rp)
+            var pitchCircle = guideGroup.pathItems.ellipse(
+                center[1] + internalData.rpPt,
+                center[0] - internalData.rpPt,
+                internalData.rpPt * 2,
+                internalData.rpPt * 2
+            );
+            pitchCircle.name = "PitchCircle_rp" + Math.round(internalData.rpMm * 10) / 10 + "mm";
+            applyGuideStyle(pitchCircle, guideStrokeWidth, guideColor, [3, 2]);
+
+            // Tip Circle (ra - inner tip)
+            var tipCircle = guideGroup.pathItems.ellipse(
+                center[1] + internalData.raPt,
+                center[0] - internalData.raPt,
+                internalData.raPt * 2,
+                internalData.raPt * 2
+            );
+            tipCircle.name = "TipCircle_ra" + Math.round(internalData.raMm * 10) / 10 + "mm";
+            applyGuideStyle(tipCircle, guideStrokeWidth, guideColor, [1, 2]);
+
+            // Root Circle (rf - outer root)
+            var rootCircle = guideGroup.pathItems.ellipse(
+                center[1] + internalData.rfPt,
+                center[0] - internalData.rfPt,
+                internalData.rfPt * 2,
+                internalData.rfPt * 2
+            );
+            rootCircle.name = "RootCircle_rf" + Math.round(internalData.rfMm * 10) / 10 + "mm";
+            applyGuideStyle(rootCircle, guideStrokeWidth, guideColor, [1, 2]);
+        }
+
+        // Text Label
+        if (options.drawText !== false) {
+            try {
+                var tf = gearGroup.textFrames.add();
+                tf.contents = "Internal: m=" + internalData.m + " z=" + internalData.z + " PCD=" + (internalData.rpMm * 2) + "mm ID=" + (internalData.raMm * 2) + "mm OD=" + (internalData.rRimMm * 2) + "mm";
+                var leftVal = center[0] - internalData.rRimPt;
+                var topVal = center[1] + internalData.rRimPt + 15;
+                tf.left = (!isNaN(leftVal)) ? leftVal : (center[0] - 20);
+                tf.top = (!isNaN(topVal)) ? topVal : (center[1] + 20);
+                tf.textRange.characterAttributes.size = 8;
+                tf.textRange.characterAttributes.fillColor = textColor;
+            } catch (eTfInt) {
+                // Ignore text frame errors
+            }
+        }
+
+        return gearGroup;
+    }
+
+    /**
+     * Draw a meshing Internal Gear Pair (Pinion inside Internal Ring Gear).
+     */
+    function drawInternalMeshingPair(doc, params) {
+        var layer = getOrCreateLayer(doc, "GearDrawer");
+
+        var abRect = getActiveArtboardRect(doc);
+        var abWidth = abRect[2] - abRect[0];
+        var abHeight = abRect[1] - abRect[3];
+
+        var internalCenter = resolveSystemCenter(params.options, [abRect[0] + abWidth / 2, abRect[1] - abHeight / 2]);
+
+        // Pinion center relative to internal gear center:
+        // params.internalMeshing.internalCenterX and internalCenterY are relative to pinion center (0, 0).
+        // Therefore Pinion center = internalCenter - [internalCenterX, internalCenterY]
+        var pinionCenter = [
+            internalCenter[0] - params.internalMeshing.internalCenterX,
+            internalCenter[1] - params.internalMeshing.internalCenterY
+        ];
+
+        // Draw Pinion (External Spur Gear)
+        var pinionGroup = drawGear(
+            doc,
+            layer,
+            pinionCenter,
+            params.pinionData,
+            params.internalMeshing.pinionRotationDeg,
+            "Pinion_z" + params.pinionData.z,
+            params.options
+        );
+
+        // Draw Internal Ring Gear
+        var internalGroup = drawInternalGear(
+            doc,
+            layer,
+            internalCenter,
+            params.internalData,
+            params.internalMeshing.internalRotationDeg,
+            "InternalGear_z" + params.internalData.z,
+            params.options
+        );
+
+        var pairGroup = layer.groupItems.add();
+        pairGroup.name = "InternalPair_m" + params.pinionData.m + "_z" + params.pinionData.z + "x" + params.internalData.z;
+        internalGroup.moveToBeginning(pairGroup);
+        pinionGroup.moveToBeginning(pairGroup);
+
+        return pairGroup;
+    }
+
+    /**
+     * Draw 3K Paradoxical Planetary Gear Set on Illustrator document.
+     */
+    function drawParadoxicalPlanetary(doc, params, options) {
+        options = options || {};
+        var layer = getOrCreateLayer(doc, "GearDrawer_Paradoxical");
+
+        var abRect = getActiveArtboardRect(doc);
+        var abWidth = abRect[2] - abRect[0];
+        var abHeight = abRect[1] - abRect[3];
+
+        var systemCenter = resolveSystemCenter(options, [abRect[0] + abWidth / 2, abRect[1] - abHeight / 2]);
+
+        var systemGroup = layer.groupItems.add();
+        systemGroup.name = "Paradoxical_m" + params.m + "_s" + params.zs + "p" + params.zp + "r" + params.zr1 + "x" + params.zr2;
+
+        // 1. Draw Sun Gear (Blue)
+        var sunGroup = drawGear(
+            doc,
+            layer,
+            systemCenter,
+            params.sunData,
+            0.0,
+            "Sun_z" + params.zs,
+            options
+        );
+        sunGroup.moveToBeginning(systemGroup);
+
+        // 2. Draw Planets
+        var planetContainer = systemGroup.groupItems.add();
+        planetContainer.name = "Planets_zp" + params.zp + "_Count" + params.planets.length;
+
+        for (var p = 0; p < params.planets.length; p++) {
+            var pl = params.planets[p];
+            var pCenter = [systemCenter[0] + pl.centerX, systemCenter[1] + pl.centerY];
+            var pGroup = drawGear(
+                doc,
+                layer,
+                pCenter,
+                params.planetData,
+                pl.rotationDeg,
+                "Planet_" + (p + 1) + "_z" + params.zp,
+                options
+            );
+            pGroup.moveToBeginning(planetContainer);
+        }
+
+        // 3. Draw Fixed Ring Gear 1 (Red)
+        var ring1Group = drawInternalGear(
+            doc,
+            layer,
+            systemCenter,
+            params.ring1Data,
+            0.0,
+            "Ring1_Fixed_z" + params.zr1,
+            options
+        );
+        ring1Group.moveToBeginning(systemGroup);
+
+        // 4. Draw Output Ring Gear 2 (Purple / shifted)
+        var ring2Group = drawInternalGear(
+            doc,
+            layer,
+            systemCenter,
+            params.ring2Data,
+            0.0,
+            "Ring2_Output_z" + params.zr2 + "_x" + Math.round(params.xr2 * 100) / 100,
+            options
+        );
+        ring2Group.moveToBeginning(systemGroup);
+
+        return systemGroup;
+    }
+
+    /**
+     * Draw Standard 2K-H Planetary Gear Set on Illustrator document.
+     */
+    function drawStandardPlanetary(doc, params, options) {
+        options = options || {};
+        var layer = getOrCreateLayer(doc, "GearDrawer_Planetary");
+
+        var abRect = getActiveArtboardRect(doc);
+        var abWidth = abRect[2] - abRect[0];
+        var abHeight = abRect[1] - abRect[3];
+
+        var systemCenter = resolveSystemCenter(options, [abRect[0] + abWidth / 2, abRect[1] - abHeight / 2]);
+
+        var systemGroup = layer.groupItems.add();
+        systemGroup.name = "Planetary_m" + params.m + "_s" + params.zs + "p" + params.zp + "r" + params.zr;
+
+        // 1. Draw Sun Gear
+        var sunGroup = drawGear(
+            doc,
+            layer,
+            systemCenter,
+            params.sunData,
+            0.0,
+            "Sun_z" + params.zs,
+            options
+        );
+        sunGroup.moveToBeginning(systemGroup);
+
+        // 2. Draw Planets
+        var planetContainer = systemGroup.groupItems.add();
+        planetContainer.name = "Planets_zp" + params.zp + "_Count" + params.planets.length;
+
+        for (var p = 0; p < params.planets.length; p++) {
+            var pl = params.planets[p];
+            var pCenter = [systemCenter[0] + pl.centerX, systemCenter[1] + pl.centerY];
+            var pGroup = drawGear(
+                doc,
+                layer,
+                pCenter,
+                params.planetData,
+                pl.rotationDeg,
+                "Planet_" + (p + 1) + "_z" + params.zp,
+                options
+            );
+            pGroup.moveToBeginning(planetContainer);
+        }
+
+        // 3. Draw Ring Gear
+        var ringGroup = drawInternalGear(
+            doc,
+            layer,
+            systemCenter,
+            params.ringData,
+            0.0,
+            "Ring_z" + params.zr,
+            options
+        );
+        ringGroup.moveToBeginning(systemGroup);
+
+        return systemGroup;
+    }
+
+    /**
+     * Handles the original selected circle object on artboard.
+     * 
+     * @param {PathItem} circleItem
+     * @param {String} fate "guide" | "delete" | "keep"
+     */
+    function handleSelectedCircles(circleItems, fate) {
+        if (!circleItems) return;
+        var list = (circleItems instanceof Array) ? circleItems : [circleItems];
+        for (var i = 0; i < list.length; i++) {
+            var itm = list[i];
+            if (!itm) continue;
+            try {
+                if (fate === "guide") {
+                    itm.guides = true;
+                    itm.selected = false;
+                } else if (fate === "delete") {
+                    itm.remove();
+                } else {
+                    itm.selected = false;
+                }
+            } catch (e) {
+                // Ignore error
+            }
+        }
+    }
+    var handleSelectedCircle = handleSelectedCircles;
+
+    /**
+     * Draws JIS B 0003 & Kinematic Skeleton Diagram into the DWG layer.
+     * Follows strict JIS gear drafting conventions:
+     * - Tip circle (da): Solid outer boundary
+     * - Pitch circle (d): Fine dash-dot line [6, 2, 1.5, 2]
+     * - Root circle (df): Fine solid line
+     * - Axis center: Dash-dot crosshair compound path
+     * - Center-to-center line: Dash-dot kinematic link line
+     * 
+     * @param {Layer} dwgLayer
+     * @param {Array} gears List of { id, center, m, z, pitchRadiusPt, tipRadiusPt, rootRadiusPt }
+     * @param {Array} connections List of [center1, center2, id1, id2]
+     * @param {Object} options
+     */
+    function drawDwgSkeleton(dwgLayer, gears, connections, options) {
+        if (!dwgLayer) return;
+        unlockAndShowLayer(dwgLayer);
+        try { dwgLayer.parent.activeLayer = dwgLayer; } catch (eAL) {}
+        var dwgGroup = dwgLayer.groupItems.add();
+        dwgGroup.name = "Skeleton_Kinematics";
+
+        var regColor = getRegistrationColor(dwgLayer.parent);
+        var strokeWidth = (options && options.guideStrokeWidth) ? options.guideStrokeWidth : 0.25;
+
+        // 1. Draw connection lines between meshing centers (Kinematic link lines)
+        if (connections) {
+            for (var c = 0; c < connections.length; c++) {
+                var conn = connections[c];
+                var cLine = dwgGroup.pathItems.add();
+                cLine.name = "CenterLine_" + conn[2] + "_to_" + conn[3];
+                cLine.setEntirePath([conn[0], conn[1]]);
+                applyGuideStyle(cLine, strokeWidth, regColor, [6, 2, 1.5, 2]);
+            }
+        }
+
+        // 2. Draw each gear's theoretical circles & axis crosshair
+        if (gears) {
+            for (var g = 0; g < gears.length; g++) {
+                var gear = gears[g];
+                var center = gear.center;
+                var gDwgGroup = dwgGroup.groupItems.add();
+                gDwgGroup.name = gear.id + "_Dwg";
+
+                // 2a. Pitch Circle (Fine Dash-Dot Line) - JIS Standard
+                var pCirc = gDwgGroup.pathItems.ellipse(
+                    center[1] + gear.pitchRadiusPt,
+                    center[0] - gear.pitchRadiusPt,
+                    gear.pitchRadiusPt * 2,
+                    gear.pitchRadiusPt * 2
+                );
+                pCirc.name = gear.id + "_PitchCircle_d" + (gear.pitchRadiusPt * 2 * 25.4 / 72).toFixed(1);
+                applyGuideStyle(pCirc, strokeWidth, regColor, [6, 2, 1.5, 2]);
+
+                // 2b. Tip Circle (Solid Line) - JIS Standard
+                var tCirc = gDwgGroup.pathItems.ellipse(
+                    center[1] + gear.tipRadiusPt,
+                    center[0] - gear.tipRadiusPt,
+                    gear.tipRadiusPt * 2,
+                    gear.tipRadiusPt * 2
+                );
+                tCirc.name = gear.id + "_TipCircle_da" + (gear.tipRadiusPt * 2 * 25.4 / 72).toFixed(1);
+                applyGuideStyle(tCirc, strokeWidth * 1.4, regColor);
+
+                // 2c. Root Circle (Fine Solid Line)
+                if (gear.rootRadiusPt && gear.rootRadiusPt > 0) {
+                    var rCirc = gDwgGroup.pathItems.ellipse(
+                        center[1] + gear.rootRadiusPt,
+                        center[0] - gear.rootRadiusPt,
+                        gear.rootRadiusPt * 2,
+                        gear.rootRadiusPt * 2
+                    );
+                    rCirc.name = gear.id + "_RootCircle_df" + (gear.rootRadiusPt * 2 * 25.4 / 72).toFixed(1);
+                    applyGuideStyle(rCirc, strokeWidth * 0.8, regColor);
+                }
+
+                // 2d. Axis Center Crosshair (CompoundPath with Dash-Dot)
+                var crossLen = Math.max(gear.pitchRadiusPt * 0.5, 12);
+                var crossCompound = gDwgGroup.compoundPathItems.add();
+                crossCompound.name = gear.id + "_AxisCross";
+                var hLine = crossCompound.pathItems.add();
+                hLine.setEntirePath([[center[0] - crossLen, center[1]], [center[0] + crossLen, center[1]]]);
+                var vLine = crossCompound.pathItems.add();
+                vLine.setEntirePath([[center[0], center[1] - crossLen], [center[0], center[1] + crossLen]]);
+                applyGuideStyle(crossCompound, strokeWidth, regColor, [6, 2, 1.5, 2]);
+            }
+        }
+    }
+
+    /**
+     * Draw a complete branched gear train (tree graph) into Illustrator.
+     * Generates hierarchical layers (Main layer -> Sublayers per stack level),
+     * applies token-based naming conventions, and generates a JIS B 0003
+     * kinematic skeleton drawing layer.
+     * 
+     * @param {Document} doc
+     * @param {Object} trainData Result from InvoluteMath.calculateBranchedGearTrain
+     * @param {Object} options Drawing options (cutStrokeWidth, guideStrokeWidth, drawGuides, naming, etc.)
+     */
+    function drawBranchedGearTrain(doc, trainData, options) {
+        options = options || {};
+        var naming = options.naming || InvoluteMath.NAMING_PRESETS.standard;
+        var trainId = options.trainId || "T1";
+
+        var abRect = getActiveArtboardRect(doc);
+        var centers = resolveTrainCenters(trainData.nodes, options, abRect);
+
+        logTrace("DRAW_TRAIN", "Starting branched gear train drawing", {
+            trainId: trainId,
+            nodeCount: trainData.nodes ? trainData.nodes.length : 0,
+            m: trainData.m,
+            placementRef: options.placementRef || "original"
+        });
+
+        // 1. Create Main Train Layer (e.g. "T1")
+        var mainLayerName = InvoluteMath.formatName(naming.mainLayer, {
+            train: trainId,
+            m: trainData.m
+        });
+        var mainLayer = getOrCreateLayer(doc, mainLayerName);
+
+        // Overwrite mode: clear all existing items and sublayers in the target train layer
+        if (options.overwriteLayer && mainLayer) {
+            try {
+                unlockAndShowLayer(mainLayer);
+                while (mainLayer.pageItems.length > 0) {
+                    try { mainLayer.pageItems[0].locked = false; } catch (eItmLk) {}
+                    mainLayer.pageItems[0].remove();
+                }
+                while (mainLayer.layers.length > 0) {
+                    unlockAndShowLayer(mainLayer.layers[0]);
+                    mainLayer.layers[0].remove();
+                }
+            } catch (eClean) {
+                // Ignore cleanup errors on system items
+            }
+        }
+
+        // 2. Prepare sublayer dictionary by layerIndex/stageIndex (e.g. "T1_L1", "T1_L2")
+        var subLayers = {};
+        for (var s = 0; s < trainData.nodes.length; s++) {
+            var sNd = trainData.nodes[s];
+            var lIdx = sNd.stageIndex || sNd.layerIndex || 1;
+            if (!subLayers[lIdx]) {
+                var origLyr = sNd.layerName || ((sNd.origCircle && sNd.origCircle.layerName) ? sNd.origCircle.layerName : "");
+                var subName = InvoluteMath.formatName(naming.subLayer, {
+                    train: trainId,
+                    layer: lIdx,
+                    stage: lIdx,
+                    origLayer: origLyr,
+                    layerName: origLyr,
+                    m: sNd.m || trainData.m,
+                    alpha: sNd.alphaDeg || trainData.alphaDeg
+                });
+                subLayers[lIdx] = getOrCreateLayer(doc, subName, mainLayer);
+            }
+        }
+
+        var dwgGears = [];
+        var dwgConnections = [];
+
+        // 3. Draw each gear node into its designated sublayer
+        for (var i = 0; i < trainData.nodes.length; i++) {
+            var nd = trainData.nodes[i];
+            var lIndex = nd.stageIndex || nd.layerIndex || 1;
+            var targetLayer = subLayers[lIndex] || mainLayer;
+            unlockAndShowLayer(targetLayer);
+            try { doc.activeLayer = targetLayer; } catch (eAL) {}
+
+            var center = centers[i];
+
+            var isInternal = (nd.gearType === "INTERNAL");
+            var isRack = (nd.gearType === "RACK");
+            var nodeM = nd.m || trainData.m;
+            var nodeAlpha = nd.alphaDeg || trainData.alphaDeg;
+            var dVal = isRack ? (nodeM * nd.z) : (isInternal ? (nd.gearData.rpMm * 2) : (nd.gearData.d || nd.gearData.pitchDiameter || (nodeM * nd.z)));
+            var daVal = isRack ? (nodeM * (nd.z + 2)) : (isInternal ? (nd.gearData.raMm * 2) : (nd.gearData.da || (nodeM * (nd.z + 2))));
+
+            var origLyrNode = nd.layerName || ((nd.origCircle && nd.origCircle.layerName) ? nd.origCircle.layerName : "");
+            var gearName = InvoluteMath.formatName(naming.gearGroup, {
+                train: trainId,
+                layer: lIndex,
+                stage: lIndex,
+                origLayer: origLyrNode,
+                layerName: origLyrNode,
+                id: nd.id,
+                parentId: nd.parentId || "Root",
+                role: nd.relationType,
+                m: nodeM,
+                alpha: nodeAlpha,
+                z: nd.z,
+                gearType: isRack ? "RACK" : (isInternal ? "INTERNAL" : "SPUR"),
+                type: isRack ? "Rack" : (isInternal ? "Internal" : "Spur"),
+                d: dVal,
+                pcd: dVal,
+                da: daVal,
+                shaft: isInternal ? ("rim" + nd.rimDiameter) : (isRack ? "h" + (nd.rackHeight || 12) : nd.shaftDiameter),
+                angle: nd.relativeAngleDeg
+            });
+
+            if (isRack) {
+                drawRack(
+                    doc,
+                    targetLayer,
+                    center,
+                    nd.gearData,
+                    nd.rotationDeg,
+                    (nd.shiftPt !== undefined) ? nd.shiftPt : 0,
+                    gearName,
+                    options
+                );
+            } else if (isInternal) {
+                drawInternalGear(
+                    doc,
+                    targetLayer,
+                    center,
+                    nd.gearData,
+                    nd.rotationDeg,
+                    gearName,
+                    options
+                );
+            } else {
+                drawGear(
+                    doc,
+                    targetLayer,
+                    center,
+                    nd.gearData,
+                    nd.rotationDeg,
+                    gearName,
+                    options
+                );
+            }
+
+            // Collect info for DWG skeleton layer
+            if (!isRack) {
+                dwgGears.push({
+                    id: nd.id,
+                    center: center,
+                    m: nodeM,
+                    alpha: nodeAlpha,
+                    z: nd.z,
+                    gearType: nd.gearType,
+                    pitchRadiusPt: isInternal ? nd.gearData.rpPt : nd.gearData.pitchRadiusPt,
+                    tipRadiusPt: isInternal ? nd.gearData.raPt : nd.gearData.tipRadiusPt,
+                    rootRadiusPt: isInternal ? nd.gearData.rfPt : nd.gearData.rootRadiusPt
+                });
+            }
+
+            // Collect connections for DWG skeleton layer
+            if (nd.parentId && nd.relationType === "MESHING") {
+                var pIdx = -1;
+                for (var k = 0; k < trainData.nodes.length; k++) {
+                    if (trainData.nodes[k].id === nd.parentId) {
+                        pIdx = k;
+                        break;
+                    }
+                }
+                if (pIdx >= 0) {
+                    var pCenter = centers[pIdx];
+                    dwgConnections.push([pCenter, center, nd.parentId, nd.id]);
+                }
+            }
+        }
+
+        // 4. Generate Drawing / Skeleton Sublayer (e.g. "T1_dwg" or per-stage "T1_1_dwg" under mainLayer)
+        if (options.drawDwgLayer !== false) {
+            if (options.skelMode === "per_stage") {
+                // Group gears and connections by stage / layerIndex
+                var stagesMap = {};
+                for (var sg = 0; sg < dwgGears.length; sg++) {
+                    var stIdx = trainData.nodes[sg].layerIndex || 1;
+                    if (!stagesMap[stIdx]) stagesMap[stIdx] = { gears: [], conns: [] };
+                    stagesMap[stIdx].gears.push(dwgGears[sg]);
+                }
+                for (var sc = 0; sc < dwgConnections.length; sc++) {
+                    var conn = dwgConnections[sc];
+                    // Find stage of child
+                    var cId = conn[3];
+                    var cStage = 1;
+                    for (var cn = 0; cn < trainData.nodes.length; cn++) {
+                        if (trainData.nodes[cn].id === cId) {
+                            cStage = trainData.nodes[cn].layerIndex || 1;
+                            break;
+                        }
+                    }
+                    if (!stagesMap[cStage]) stagesMap[cStage] = { gears: [], conns: [] };
+                    stagesMap[cStage].conns.push(conn);
+                }
+
+                for (var stageKey in stagesMap) {
+                    if (stagesMap.hasOwnProperty(stageKey)) {
+                        var stData = stagesMap[stageKey];
+                        var stageDwgName = InvoluteMath.formatName(naming.dwgLayer, {
+                            train: trainId,
+                            layer: stageKey,
+                            stage: stageKey,
+                            m: trainData.m
+                        });
+                        // If template didn't include stage/layer, append stage suffix
+                        if (stageDwgName.indexOf(stageKey) === -1 && stageDwgName === naming.dwgLayer) {
+                            stageDwgName = trainId + "_" + stageKey + "_dwg";
+                        }
+                        var stDwgLayer = getOrCreateLayer(doc, stageDwgName, mainLayer);
+                        drawDwgSkeleton(stDwgLayer, stData.gears, stData.conns, options);
+                    }
+                }
+            } else {
+                var dwgLayerName = InvoluteMath.formatName(naming.dwgLayer, {
+                    train: trainId,
+                    m: trainData.m
+                });
+                var dwgLayer = getOrCreateLayer(doc, dwgLayerName, mainLayer);
+                drawDwgSkeleton(dwgLayer, dwgGears, dwgConnections, options);
+            }
+        }
+
+        return mainLayer;
     }
 
     return {
         getOrCreateLayer: getOrCreateLayer,
         drawGear: drawGear,
-        drawMeshingPair: drawMeshingPair
+        drawMeshingPair: drawMeshingPair,
+        drawRack: drawRack,
+        drawRackAndPinionPair: drawRackAndPinionPair,
+        drawInternalGear: drawInternalGear,
+        drawInternalMeshingPair: drawInternalMeshingPair,
+        drawStandardPlanetary: drawStandardPlanetary,
+        drawParadoxicalPlanetary: drawParadoxicalPlanetary,
+        handleSelectedCircle: handleSelectedCircle,
+        handleSelectedCircles: handleSelectedCircles,
+        resolveTrainCenters: resolveTrainCenters,
+        resolveSystemCenter: resolveSystemCenter,
+        drawBranchedGearTrain: drawBranchedGearTrain
     };
 })();
 
 /**
- * DialogView.jsxinc - GearDrawer ScriptUI Dialog
- * Version: 0.2.0
+ * DialogView.jsxinc - GearDrawer Universal ScriptUI Dialog (2-Tabbed Architecture v2)
+ * Version: 1.0.0
  * 
- * Provides an intuitive parameter input dialog with real-time
- * calculation updates, anchor quality selection (Recommended Bezier / Minimal Bezier / Polyline),
- * and drawing mode selection (Normal / Test Teeth / Test Disassembled).
- * All UI labels are Unicode-escaped for 100% environment compatibility.
+ * Provides an intuitive, compact 2-tabbed interface:
+ * - Tab 1: Gear Creation (Main)
+ *     1. Mechanism Type Panel (Branched, Planetary, Paradoxical)
+ *     2. Circle Object Topology Panel (Source selection, rescan, pitch/tip interpretation, strict isCircle check)
+ *     3. Mechanism Configuration Panel (Expanded 10-row gear table, gear ID editor with unique check & enter protection,
+ *        parent-first inputs, reduction ratio column, outer diameter/rim thickness column, stage specs)
+ *     4. Gear Creation Options (6 specific checkboxes: compound path, pitch same layer, center guide same group,
+ *        spec labels, single skeleton layer, per-stage skeleton layer)
+ *     5. Placement & Origin Panel (Train ID with auto-increment, placement reference "Root Gear Center", X/Y mm)
+ *     6. Calculation & Interference Preview Panel
+ * - Tab 2: Standard Preferences (Settings)
+ *     1. General Settings (Module without unit, pressure angle, backlash, kerf, shaft diameter, shaft type, thickness basis)
+ *     2. CAD/CAM Styles & Precision (Presets, detailed modal with color preview & document swatch picker)
+ *     3. Layers & Naming Conventions ({prefix}{Number} format)
+ *     4. Diagnostics & Log Preferences (Log directory, auto-check log on creation)
+ *     5. Profile JSON Import / Export & Reset
+ * - Common Action Footer:
+ *     [View Log...] [Reset to Defaults] [Cancel] [Draw Gears]
  */
 
 var DialogView = (function () {
-    function show(onGenerate) {
-        var win = new Window("dialog", "GearDrawer v0.2.0 - Meshing Gear Generator");
+    var MM_TO_PT = 72.0 / 25.4;
+    var PT_TO_MM = 25.4 / 72.0;
+
+    // ==========================================
+    // 0. Lightweight Safe JSON Polyfill for ExtendScript
+    // ==========================================
+    var SimpleJSON = {
+        stringify: function (obj, indent) {
+            indent = indent || "";
+            if (obj === null) return "null";
+            if (typeof obj === "undefined") return "undefined";
+            if (typeof obj === "number" || typeof obj === "boolean") return String(obj);
+            if (typeof obj === "string") {
+                return '"' + obj.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t") + '"';
+            }
+            var isArr = (Object.prototype.toString.call(obj) === "[object Array]" || obj instanceof Array);
+            if (isArr) {
+                var arrItems = [];
+                for (var i = 0; i < obj.length; i++) {
+                    arrItems.push(indent + "  " + SimpleJSON.stringify(obj[i], indent + "  "));
+                }
+                return "[\n" + arrItems.join(",\n") + "\n" + indent + "]";
+            }
+            if (typeof obj === "object") {
+                var objItems = [];
+                for (var k in obj) {
+                    if (obj.hasOwnProperty(k)) {
+                        objItems.push(indent + '  "' + k + '": ' + SimpleJSON.stringify(obj[k], indent + "  "));
+                    }
+                }
+                return "{\n" + objItems.join(",\n") + "\n" + indent + "}";
+            }
+            return String(obj);
+        },
+        parse: function (str) {
+            if (typeof JSON !== "undefined" && JSON && typeof JSON.parse === "function") {
+                return JSON.parse(str);
+            }
+            return eval("(" + str + ")");
+        }
+    };
+
+    // ==========================================
+    // 0b. CAD / CAM Style Presets
+    // ==========================================
+    var STYLE_PRESETS = {
+        laser: {
+            name: "\u30ec\u30fc\u30b6\u30fc\u52a0\u5de5\u6a19\u6e96 (Laser Hairline Red)",
+            cut: { r: 255, g: 0, b: 0, strokeWidthPt: 0.001, dashes: [] },
+            pitchGuide: { r: 0, g: 150, b: 0, strokeWidthPt: 0.25, dashes: [4, 2] },
+            baseGuide: { r: 0, g: 100, b: 255, strokeWidthPt: 0.25, dashes: [] },
+            skeleton: { r: 0, g: 0, b: 0, strokeWidthPt: 0.25, dashes: [] }
+        },
+        jis: {
+            name: "JIS \u6a5f\u68b0\u88fd\u56f3\u6a19\u6e96 (0.5mm \u592a\u7dda/\u7d30\u7dda)",
+            cut: { r: 0, g: 0, b: 0, strokeWidthPt: 0.5 * (72.0 / 25.4), dashes: [] },
+            pitchGuide: { r: 255, g: 0, b: 0, strokeWidthPt: 0.25 * (72.0 / 25.4), dashes: [12, 2, 2, 2] },
+            baseGuide: { r: 0, g: 150, b: 0, strokeWidthPt: 0.25 * (72.0 / 25.4), dashes: [] },
+            skeleton: { r: 0, g: 0, b: 255, strokeWidthPt: 0.25 * (72.0 / 25.4), dashes: [12, 2, 2, 2] }
+        },
+        cnc: {
+            name: "CNC\u5207\u524a / 3D\u30d7\u30ea\u30f3\u30c8\u6a19\u6e96",
+            cut: { r: 255, g: 0, b: 255, strokeWidthPt: 0.1 * (72.0 / 25.4), dashes: [] },
+            pitchGuide: { r: 0, g: 255, b: 255, strokeWidthPt: 0.1 * (72.0 / 25.4), dashes: [] },
+            baseGuide: { r: 100, g: 100, b: 100, strokeWidthPt: 0.1 * (72.0 / 25.4), dashes: [] },
+            skeleton: { r: 0, g: 0, b: 0, strokeWidthPt: 0.1 * (72.0 / 25.4), dashes: [] }
+        }
+    };
+
+    function cloneObj(o) {
+        if (o === null || typeof o !== "object") return o;
+        var isArr = (Object.prototype.toString.call(o) === "[object Array]" || o instanceof Array);
+        var copy = isArr ? [] : {};
+        for (var k in o) {
+            if (o.hasOwnProperty(k)) {
+                copy[k] = cloneObj(o[k]);
+            }
+        }
+        return copy;
+    }
+
+    // ==========================================
+    // 0c. Modal: Detailed Style Configuration (with Color Previews & Swatch Picker)
+    // ==========================================
+    function showStyleDetailModal(parentWin, currentStyles, onApply) {
+        var modal = new Window("dialog", "\u8a73\u7d30\u30b9\u30bf\u30a4\u30eb\u8a2d\u5b9a (CAD / CAM / \u88fd\u56f3)");
+        modal.orientation = "column";
+        modal.alignChildren = ["fill", "top"];
+        modal.spacing = 8;
+        modal.margins = 12;
+
+        function addColorPreview(container, r, g, b) {
+            var pBox = container.add("customView", undefined);
+            pBox.preferredSize = [20, 20];
+            pBox.colorR = r;
+            pBox.colorG = g;
+            pBox.colorB = b;
+            pBox.onDraw = function () {
+                var gph = this.graphics;
+                var cr = (typeof this.colorR === "number") ? this.colorR / 255.0 : 0;
+                var cg = (typeof this.colorG === "number") ? this.colorG / 255.0 : 0;
+                var cb = (typeof this.colorB === "number") ? this.colorB / 255.0 : 0;
+                var brush = gph.newBrush(gph.BrushType.SOLID_COLOR, [cr, cg, cb, 1]);
+                gph.rectPath(0, 0, 20, 20);
+                gph.fillPath(brush);
+                var pen = gph.newPen(gph.PenType.SOLID_COLOR, [0.3, 0.3, 0.3, 1], 1);
+                gph.strokePath(pen);
+            };
+            pBox.setColor = function (nr, ng, nb) {
+                this.colorR = nr;
+                this.colorG = ng;
+                this.colorB = nb;
+                this.notify("onDraw");
+            };
+            return pBox;
+        }
+
+        // Cut Style
+        var pnlCut = modal.add("panel", undefined, "\u5207\u65ad\u7dda (Cut - \u5916\u5f62\u30fb\u8ef8\u7a74)");
+        pnlCut.orientation = "row";
+        pnlCut.spacing = 8;
+        var prevCut = addColorPreview(pnlCut, currentStyles.cut.r, currentStyles.cut.g, currentStyles.cut.b);
+        pnlCut.add("statictext", undefined, "RGB:");
+        var etCutR = pnlCut.add("edittext", undefined, String(currentStyles.cut.r)); etCutR.characters = 3;
+        var etCutG = pnlCut.add("edittext", undefined, String(currentStyles.cut.g)); etCutG.characters = 3;
+        var etCutB = pnlCut.add("edittext", undefined, String(currentStyles.cut.b)); etCutB.characters = 3;
+        pnlCut.add("statictext", undefined, "\u7dda\u5e45(pt):");
+        var etCutW = pnlCut.add("edittext", undefined, String(currentStyles.cut.strokeWidthPt)); etCutW.characters = 5;
+
+        function updateCutPrev() {
+            prevCut.setColor(parseInt(etCutR.text, 10) || 0, parseInt(etCutG.text, 10) || 0, parseInt(etCutB.text, 10) || 0);
+        }
+        etCutR.onChanging = updateCutPrev;
+        etCutG.onChanging = updateCutPrev;
+        etCutB.onChanging = updateCutPrev;
+
+        // Pitch Guide
+        var pnlPitch = modal.add("panel", undefined, "\u30d4\u30c3\u30c1\u5186\u30ac\u30a4\u30c9 (Pitch Guide)");
+        pnlPitch.orientation = "row";
+        pnlPitch.spacing = 8;
+        var prevPitch = addColorPreview(pnlPitch, currentStyles.pitchGuide.r, currentStyles.pitchGuide.g, currentStyles.pitchGuide.b);
+        pnlPitch.add("statictext", undefined, "RGB:");
+        var etPitchR = pnlPitch.add("edittext", undefined, String(currentStyles.pitchGuide.r)); etPitchR.characters = 3;
+        var etPitchG = pnlPitch.add("edittext", undefined, String(currentStyles.pitchGuide.g)); etPitchG.characters = 3;
+        var etPitchB = pnlPitch.add("edittext", undefined, String(currentStyles.pitchGuide.b)); etPitchB.characters = 3;
+        pnlPitch.add("statictext", undefined, "\u7dda\u5e45(pt):");
+        var etPitchW = pnlPitch.add("edittext", undefined, String(currentStyles.pitchGuide.strokeWidthPt)); etPitchW.characters = 5;
+        pnlPitch.add("statictext", undefined, "\u7834\u7dda:");
+        var pDashes = (currentStyles.pitchGuide && currentStyles.pitchGuide.dashes) ? currentStyles.pitchGuide.dashes : [];
+        var pDashStr = (typeof pDashes.join === "function") ? pDashes.join(", ") : "";
+        var etPitchDash = pnlPitch.add("edittext", undefined, pDashStr); etPitchDash.characters = 7;
+
+        function updatePitchPrev() {
+            prevPitch.setColor(parseInt(etPitchR.text, 10) || 0, parseInt(etPitchG.text, 10) || 0, parseInt(etPitchB.text, 10) || 0);
+        }
+        etPitchR.onChanging = updatePitchPrev;
+        etPitchG.onChanging = updatePitchPrev;
+        etPitchB.onChanging = updatePitchPrev;
+
+        // Base Guide
+        var pnlBase = modal.add("panel", undefined, "\u57fa\u790e\u5186\u30ac\u30a4\u30c9 (Base Guide)");
+        pnlBase.orientation = "row";
+        pnlBase.spacing = 8;
+        var prevBase = addColorPreview(pnlBase, currentStyles.baseGuide.r, currentStyles.baseGuide.g, currentStyles.baseGuide.b);
+        pnlBase.add("statictext", undefined, "RGB:");
+        var etBaseR = pnlBase.add("edittext", undefined, String(currentStyles.baseGuide.r)); etBaseR.characters = 3;
+        var etBaseG = pnlBase.add("edittext", undefined, String(currentStyles.baseGuide.g)); etBaseG.characters = 3;
+        var etBaseB = pnlBase.add("edittext", undefined, String(currentStyles.baseGuide.b)); etBaseB.characters = 3;
+        pnlBase.add("statictext", undefined, "\u7dda\u5e45(pt):");
+        var etBaseW = pnlBase.add("edittext", undefined, String(currentStyles.baseGuide.strokeWidthPt)); etBaseW.characters = 5;
+
+        function updateBasePrev() {
+            prevBase.setColor(parseInt(etBaseR.text, 10) || 0, parseInt(etBaseG.text, 10) || 0, parseInt(etBaseB.text, 10) || 0);
+        }
+        etBaseR.onChanging = updateBasePrev;
+        etBaseG.onChanging = updateBasePrev;
+        etBaseB.onChanging = updateBasePrev;
+
+        // Skeleton
+        var pnlSkel = modal.add("panel", undefined, "JIS \u9aa8\u683c\u56f3\u7dda (Kinematic Skeleton)");
+        pnlSkel.orientation = "row";
+        pnlSkel.spacing = 8;
+        var prevSkel = addColorPreview(pnlSkel, currentStyles.skeleton.r, currentStyles.skeleton.g, currentStyles.skeleton.b);
+        pnlSkel.add("statictext", undefined, "RGB:");
+        var etSkelR = pnlSkel.add("edittext", undefined, String(currentStyles.skeleton.r)); etSkelR.characters = 3;
+        var etSkelG = pnlSkel.add("edittext", undefined, String(currentStyles.skeleton.g)); etSkelG.characters = 3;
+        var etSkelB = pnlSkel.add("edittext", undefined, String(currentStyles.skeleton.b)); etSkelB.characters = 3;
+        pnlSkel.add("statictext", undefined, "\u7dda\u5e45(pt):");
+        var etSkelW = pnlSkel.add("edittext", undefined, String(currentStyles.skeleton.strokeWidthPt)); etSkelW.characters = 5;
+
+        function updateSkelPrev() {
+            prevSkel.setColor(parseInt(etSkelR.text, 10) || 0, parseInt(etSkelG.text, 10) || 0, parseInt(etSkelB.text, 10) || 0);
+        }
+        etSkelR.onChanging = updateSkelPrev;
+        etSkelG.onChanging = updateSkelPrev;
+        etSkelB.onChanging = updateSkelPrev;
+
+        // Swatch shortcut
+        var rowSwatch = modal.add("group");
+        rowSwatch.orientation = "row";
+        rowSwatch.spacing = 8;
+        rowSwatch.add("statictext", undefined, "\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u30b9\u30a6\u30a9\u30c3\u30c1\u304b\u3089\u5207\u65ad\u8272\u3092\u53d6\u5f97:");
+        var swatchNames = ["(\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044)"];
+        var swatchObjs = [];
+        try {
+            if (app.documents.length > 0) {
+                var sws = app.activeDocument.swatches;
+                for (var s = 0; s < sws.length; s++) {
+                    swatchNames.push(sws[s].name);
+                    swatchObjs.push(sws[s]);
+                }
+            }
+        } catch (eSw) {}
+        var ddSwatches = rowSwatch.add("dropdownlist", undefined, swatchNames);
+        ddSwatches.selection = 0;
+        ddSwatches.onChange = function () {
+            if (ddSwatches.selection && ddSwatches.selection.index > 0) {
+                var targetSw = swatchObjs[ddSwatches.selection.index - 1];
+                if (targetSw && targetSw.color && targetSw.color.typename === "RGBColor") {
+                    etCutR.text = String(Math.round(targetSw.color.red));
+                    etCutG.text = String(Math.round(targetSw.color.green));
+                    etCutB.text = String(Math.round(targetSw.color.blue));
+                    updateCutPrev();
+                }
+            }
+        };
+
+        // Action Buttons
+        var grpM = modal.add("group");
+        grpM.orientation = "row";
+        grpM.alignment = ["right", "center"];
+        var btnMCan = grpM.add("button", undefined, "\u30ad\u30e3\u30f3\u30bb\u30eb");
+        var btnMOk = grpM.add("button", undefined, "\u8a2d\u5b9a\u3092\u9069\u7528");
+
+        btnMCan.onClick = function () { modal.close(0); };
+        btnMOk.onClick = function () {
+            function parseDashes(str) {
+                if (!str) return [];
+                var parts = str.split(",");
+                var res = [];
+                for (var p = 0; p < parts.length; p++) {
+                    var v = parseFloat(parts[p]);
+                    if (!isNaN(v) && v > 0) res.push(v);
+                }
+                return res;
+            }
+
+            var updated = {
+                name: "\u30ab\u30b9\u30bf\u30e0 (Custom)",
+                cut: {
+                    r: parseInt(etCutR.text, 10) || 0,
+                    g: parseInt(etCutG.text, 10) || 0,
+                    b: parseInt(etCutB.text, 10) || 0,
+                    strokeWidthPt: parseFloat(etCutW.text) || 0.001,
+                    dashes: []
+                },
+                pitchGuide: {
+                    r: parseInt(etPitchR.text, 10) || 0,
+                    g: parseInt(etPitchG.text, 10) || 0,
+                    b: parseInt(etPitchB.text, 10) || 0,
+                    strokeWidthPt: parseFloat(etPitchW.text) || 0.25,
+                    dashes: parseDashes(etPitchDash.text)
+                },
+                baseGuide: {
+                    r: parseInt(etBaseR.text, 10) || 0,
+                    g: parseInt(etBaseG.text, 10) || 0,
+                    b: parseInt(etBaseB.text, 10) || 0,
+                    strokeWidthPt: parseFloat(etBaseW.text) || 0.25,
+                    dashes: []
+                },
+                skeleton: {
+                    r: parseInt(etSkelR.text, 10) || 0,
+                    g: parseInt(etSkelG.text, 10) || 0,
+                    b: parseInt(etSkelB.text, 10) || 0,
+                    strokeWidthPt: parseFloat(etSkelW.text) || 0.25,
+                    dashes: []
+                }
+            };
+            modal.close(1);
+            if (onApply) onApply(updated);
+        };
+
+        modal.show();
+    }
+
+    // ==========================================
+    // 0d. Settings Profile I/O Helpers
+    // ==========================================
+    function exportSettingsProfile(profileObj) {
+        try {
+            var file = File.saveDialog(
+                "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u306e\u4fdd\u5b58",
+                "GearDrawer Profile (*.json):*.json"
+            );
+            if (!file) return;
+            if (file.name.indexOf(".") === -1) {
+                file = new File(file.fsName + ".json");
+            }
+            file.encoding = "UTF-8";
+            file.open("w");
+            file.write(SimpleJSON.stringify(profileObj, ""));
+            file.close();
+            alert("\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f:\n" + file.fsName);
+        } catch (eExp) {
+            alert("\u4fdd\u5b58\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + eExp.message);
+        }
+    }
+
+    function importSettingsProfile(onLoaded) {
+        try {
+            var file = File.openDialog(
+                "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u306e\u8aad\u307f\u8fbc\u307f",
+                "GearDrawer Profile (*.json):*.json"
+            );
+            if (!file) return;
+            file.encoding = "UTF-8";
+            file.open("r");
+            var content = file.read();
+            file.close();
+            var profile = SimpleJSON.parse(content);
+            if (profile && typeof profile === "object") {
+                onLoaded(profile);
+                alert("\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u3092\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f:\n" + file.fsName);
+            }
+        } catch (eImp) {
+            alert("\u8aad\u307f\u8fbc\u307f\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + eImp.message);
+        }
+    }
+
+    // ==========================================
+    // 0e. Suggested Train ID Generator
+    // ==========================================
+    function getSuggestedTrainId(doc) {
+        if (!doc) return "T1";
+        var maxNum = 0;
+        try {
+            for (var i = 0; i < doc.layers.length; i++) {
+                var name = doc.layers[i].name;
+                var m = name.match(/^[Tt](\d+)$/);
+                if (m) {
+                    var num = parseInt(m[1], 10);
+                    if (num > maxNum) maxNum = num;
+                } else {
+                    var m2 = name.match(/Train_?[Tt]?(\d+)/i);
+                    if (m2) {
+                        var num2 = parseInt(m2[1], 10);
+                        if (num2 > maxNum) maxNum = num2;
+                    }
+                }
+            }
+        } catch (e) {}
+        return "T" + (maxNum + 1);
+    }
+
+    // ==========================================
+    // 0f. Strict Circular Geometry Validator
+    // ==========================================
+    function isStrictCircle(itm) {
+        if (!itm || itm.typename !== "PathItem") return false;
+        var w = Math.abs(itm.width);
+        var h = Math.abs(itm.height);
+        if (Math.abs(w - h) >= 0.5) return false;
+        if (!itm.pathPoints || itm.pathPoints.length !== 4) return false;
+        var pts = itm.pathPoints;
+        var hasHandles = false;
+        for (var p = 0; p < pts.length; p++) {
+            var pt = pts[p];
+            var dL = Math.sqrt(Math.pow(pt.leftDirection[0] - pt.anchor[0], 2) + Math.pow(pt.leftDirection[1] - pt.anchor[1], 2));
+            var dR = Math.sqrt(Math.pow(pt.rightDirection[0] - pt.anchor[0], 2) + Math.pow(pt.rightDirection[1] - pt.anchor[1], 2));
+            if (dL > 0.5 || dR > 0.5) {
+                hasHandles = true;
+                break;
+            }
+        }
+        return hasHandles;
+    }
+
+    // ==========================================
+    // Main Dialog Builder
+    // ==========================================
+    function show(arg1, arg2) {
+        var onGenerate = null;
+        var selectedCircleInfo = null;
+        if (typeof arg1 === "function") {
+            onGenerate = arg1;
+        } else {
+            selectedCircleInfo = arg1;
+            onGenerate = arg2;
+        }
+        var win = new Window("dialog", "GearDrawer - \u6b6f\u8eca\u4f5c\u56f3\u30c4\u30fc\u30eb (v1.0)");
         win.orientation = "column";
         win.alignChildren = ["fill", "top"];
-        win.spacing = 10;
-        win.margins = 16;
+        win.spacing = 6;
+        win.margins = 10;
 
-        // --- Common Parameters Panel ---
-        // \u57fa\u672c\u4ed5\u69d8 (Common Parameters)
-        var pnlCommon = win.add("panel", undefined, "\u57fa\u672c\u4ed5\u69d8 (Common Parameters)");
-        pnlCommon.orientation = "row";
-        pnlCommon.alignChildren = ["left", "center"];
-        pnlCommon.spacing = 15;
-        pnlCommon.margins = 12;
+        var selectedCircles = [];
+        var btnOk = null;
 
-        // \u30e2\u30b8\u30e5\u30fc\u30eb (m):
-        pnlCommon.add("statictext", undefined, "\u30e2\u30b8\u30e5\u30fc\u30eb (m):");
-        var etModule = pnlCommon.add("edittext", undefined, "2.0");
-        etModule.characters = 5;
+        function scanCircles(fromAllLayers) {
+            var detected = [];
+            var doc = null;
+            try {
+                if (app.documents.length > 0) doc = app.activeDocument;
+            } catch (e) {}
+            if (!doc) return detected;
 
-        // \u5727\u529b\u89d2 (deg):
-        pnlCommon.add("statictext", undefined, "\u5727\u529b\u89d2 (deg):");
-        var etAlpha = pnlCommon.add("edittext", undefined, "20");
-        etAlpha.characters = 5;
+            var COLOR_INTERNAL_GEAR_RGB = [255, 0, 0];
 
-        // --- Gears Panel (Gear 1 & Gear 2) ---
-        // \u6b6f\u8eca\u69cb\u6210 (Gear Pair Configuration)
-        var pnlGears = win.add("panel", undefined, "\u6b6f\u8eca\u69cb\u6210 (Gear Pair Configuration)");
-        pnlGears.orientation = "row";
-        pnlGears.alignChildren = ["fill", "top"];
-        pnlGears.spacing = 15;
-        pnlGears.margins = 12;
+            function getItemLayerName(itm) {
+                if (!itm) return "Default";
+                try {
+                    if (itm.layer && itm.layer.name) return itm.layer.name;
+                    var cur = itm.parent;
+                    while (cur) {
+                        if (cur.typename === "Layer") return cur.name;
+                        cur = cur.parent;
+                    }
+                } catch (e) {}
+                return "Default";
+            }
 
-        // Gear 1
-        var grpG1 = pnlGears.add("group");
-        grpG1.orientation = "column";
-        grpG1.alignChildren = ["left", "top"];
-        grpG1.spacing = 6;
-        // \u3010\u30ae\u30a2 1 (\u539f\u52d5)\u3011
-        grpG1.add("statictext", undefined, "\u3010\u30ae\u30a2 1 (\u539f\u52d5)\u3011").graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.1, 0.4, 0.8, 1], 1);
+            function inspectItem(itm) {
+                if (!itm) return;
+                if (itm.typename === "PathItem") {
+                    if (isStrictCircle(itm)) {
+                        var w = Math.abs(itm.width);
+                        var h = Math.abs(itm.height);
+                        var diamPt = (w + h) / 2.0;
+                        var diamMm = diamPt * (25.4 / 72.0);
+                        var centerPt = [itm.left + w / 2.0, itm.top - h / 2.0];
 
-        var rowG1Z = grpG1.add("group");
-        // \u6b6f\u6570 (z1):
-        rowG1Z.add("statictext", undefined, "\u6b6f\u6570 (z1):");
-        var etG1Z = rowG1Z.add("edittext", undefined, "18");
-        etG1Z.characters = 6;
+                        var gearType = "SPUR";
+                        var rgb = null;
+                        try {
+                            var col = (itm.stroked && itm.strokeColor) ? itm.strokeColor : (itm.filled ? itm.fillColor : null);
+                            if (col && col.typename === "RGBColor") {
+                                rgb = [Math.round(col.red), Math.round(col.green), Math.round(col.blue)];
+                                if (rgb[0] === COLOR_INTERNAL_GEAR_RGB[0] &&
+                                    rgb[1] === COLOR_INTERNAL_GEAR_RGB[1] &&
+                                    rgb[2] === COLOR_INTERNAL_GEAR_RGB[2]) {
+                                    gearType = "INTERNAL";
+                                }
+                            }
+                        } catch (e) {}
 
-        var rowG1Hole = grpG1.add("group");
-        // \u8ef8\u7a74\u5f84 (mm):
-        rowG1Hole.add("statictext", undefined, "\u8ef8\u7a74\u5f84 (mm):");
-        var etG1Hole = rowG1Hole.add("edittext", undefined, "5.0");
-        etG1Hole.characters = 6;
+                        detected.push({
+                            id: "C" + (detected.length + 1),
+                            item: itm,
+                            diameterPt: diamPt,
+                            diameterMm: Math.round(diamMm * 100) / 100,
+                            centerPt: centerPt,
+                            layerName: getItemLayerName(itm),
+                            rgb: rgb,
+                            gearType: gearType
+                        });
+                    }
+                } else if (itm.typename === "GroupItem") {
+                    try {
+                        for (var g = 0; g < itm.pageItems.length; g++) {
+                            inspectItem(itm.pageItems[g]);
+                        }
+                    } catch (e) {}
+                } else if (itm.typename === "CompoundPathItem") {
+                    try {
+                        for (var cp = 0; cp < itm.pathItems.length; cp++) {
+                            inspectItem(itm.pathItems[cp]);
+                        }
+                    } catch (e) {}
+                }
+            }
 
-        // Gear 2
-        var grpG2 = pnlGears.add("group");
-        grpG2.orientation = "column";
-        grpG2.alignChildren = ["left", "top"];
-        grpG2.spacing = 6;
-        // \u3010\u30ae\u30a2 2 (\u5f93\u52d5)\u3011
-        grpG2.add("statictext", undefined, "\u3010\u30ae\u30a2 2 (\u5f93\u52d5)\u3011").graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.8, 0.4, 0.1, 1], 1);
+            if (fromAllLayers) {
+                function scanLayer(lyr) {
+                    if (!lyr.visible) return;
+                    for (var p = 0; p < lyr.pageItems.length; p++) {
+                        inspectItem(lyr.pageItems[p]);
+                    }
+                    for (var s = 0; s < lyr.layers.length; s++) {
+                        scanLayer(lyr.layers[s]);
+                    }
+                }
+                for (var l = 0; l < doc.layers.length; l++) {
+                    scanLayer(doc.layers[l]);
+                }
+            } else {
+                if (doc.selection && doc.selection.length > 0) {
+                    for (var sIdx = 0; sIdx < doc.selection.length; sIdx++) {
+                        inspectItem(doc.selection[sIdx]);
+                    }
+                }
+            }
 
-        var rowG2Z = grpG2.add("group");
-        // \u6b6f\u6570 (z2):
-        rowG2Z.add("statictext", undefined, "\u6b6f\u6570 (z2):");
-        var etG2Z = rowG2Z.add("edittext", undefined, "36");
-        etG2Z.characters = 6;
+            if (typeof CalcLogger !== "undefined") {
+                CalcLogger.log("SCAN_CIRCLES", "Circles scanned (" + (fromAllLayers ? "All Layers" : "Selection") + ")", {
+                    count: detected.length,
+                    circles: (function () {
+                        var res = [];
+                        for (var d = 0; d < detected.length; d++) {
+                            res.push({
+                                id: detected[d].id,
+                                layer: detected[d].layerName,
+                                dMm: detected[d].diameterMm,
+                                gearType: detected[d].gearType
+                            });
+                        }
+                        return res;
+                    })()
+                });
+            }
 
-        var rowG2Hole = grpG2.add("group");
-        // \u8ef8\u7a74\u5f84 (mm):
-        rowG2Hole.add("statictext", undefined, "\u8ef8\u7a74\u5f84 (mm):");
-        var etG2Hole = rowG2Hole.add("edittext", undefined, "5.0");
-        etG2Hole.characters = 6;
+            return detected;
+        }
 
-        // --- Output & Drawing Mode Panel ---
-        // \u63cf\u753b\u30e2\u30fc\u30c9 / \u30c6\u30b9\u30c8\u51fa\u529b (Drawing Mode)
-        var pnlMode = win.add("panel", undefined, "\u63cf\u753b\u30e2\u30fc\u30c9 / \u30c6\u30b9\u30c8\u51fa\u529b (Drawing Mode)");
-        pnlMode.orientation = "column";
-        pnlMode.alignChildren = ["left", "top"];
-        pnlMode.spacing = 6;
-        pnlMode.margins = 12;
+        var activeDoc = null;
+        try { if (app.documents.length > 0) activeDoc = app.activeDocument; } catch (eAD) {}
+        var initialTrainId = getSuggestedTrainId(activeDoc);
 
-        // \u901a\u5e38\u30e2\u30fc\u30c9 (\u5168\u9023\u7d50\u30fb\u5b9f\u52d5\u30af\u30ed\u30fc\u30ba\u30c9\u30d1\u30b9)
-        var rbNormal = pnlMode.add("radiobutton", undefined, "\u901a\u5e38\u30e2\u30fc\u30c9 (\u5168\u9023\u7d50\u30fb\u5b9f\u52d5\u30af\u30ed\u30fc\u30ba\u30c9\u30d1\u30b9)");
-        rbNormal.value = true;
+        var selectedCircles = scanCircles(false);
+        var currentStyles = cloneObj(STYLE_PRESETS.laser);
 
-        // \u30c6\u30b9\u30c8\u30e2\u30fc\u30c9 (\u5358\u4f53\u306e\u6b6f\u00d7\u6b6f\u6570 + \u6b6f\u5143\u5186 + \u8ef8\u7a74 \u3092\u72ec\u7acb\u51fa\u529b)
-        var rbTestTeeth = pnlMode.add("radiobutton", undefined, "\u30c6\u30b9\u30c8\u30e2\u30fc\u30c9 (\u5358\u4f53\u306e\u6b6f\u00d7\u6b6f\u6570 + \u6b6f\u5143\u5186 + \u8ef8\u7a74 \u3092\u72ec\u7acb\u51fa\u529b)");
+        // ==========================================
+        // Main TabbedPanel Structure
+        // ==========================================
+        var tabMain = win.add("tabbedpanel");
+        tabMain.alignment = ["fill", "fill"];
+        tabMain.alignChildren = ["fill", "top"];
 
-        // \u5206\u89e3\u30c6\u30b9\u30c8 (\u6b6f\u5148\u5186\u5f27\u30fb\u30a4\u30f3\u30dc\u30ea\u30e5\u30fc\u30c8\u30fb\u9685\u8089\u66f2\u7dda\u3092\u672a\u9023\u7d50\u3067\u5b8c\u5168\u5206\u89e3\u51fa\u529b)
-        var rbTestDis = pnlMode.add("radiobutton", undefined, "\u5206\u89e3\u30c6\u30b9\u30c8 (\u6b6f\u5148\u5186\u5f27\u30fb\u30a4\u30f3\u30dc\u30ea\u30e5\u30fc\u30c8\u30fb\u9685\u8089\u66f2\u7dda\u3092\u672a\u9023\u7d50\u3067\u5b8c\u5168\u5206\u89e3\u51fa\u529b)");
+        // Tab 1: Gear Creation (Main)
+        var tabCreate = tabMain.add("tab", undefined, "\u6b6f\u8eca\u4f5c\u6210 (Main)");
+        tabCreate.alignChildren = ["fill", "top"];
+        tabCreate.spacing = 5;
+        tabCreate.margins = 6;
 
-        // --- Path Quality & Anchor Mode Panel ---
-        // \u30d1\u30b9\u7cbe\u5ea6\u30fb\u30a2\u30f3\u30ab\u30fc\u69cb\u6210 (Path Quality & Anchors)
-        var pnlQuality = win.add("panel", undefined, "\u30d1\u30b9\u7cbe\u5ea6\u30fb\u30a2\u30f3\u30ab\u30fc\u69cb\u6210 (Path Quality & Anchors)");
-        pnlQuality.orientation = "row";
-        pnlQuality.alignChildren = ["left", "center"];
-        pnlQuality.spacing = 15;
-        pnlQuality.margins = 12;
+        // Tab 2: Standard Preferences (Settings)
+        var tabSettings = tabMain.add("tab", undefined, "\u6a19\u6e96\u8a2d\u5b9a (Preferences)");
+        tabSettings.alignChildren = ["fill", "top"];
+        tabSettings.spacing = 6;
+        tabSettings.margins = 6;
 
-        // \u66f2\u7dda\u69cb\u6210:
-        pnlQuality.add("statictext", undefined, "\u66f2\u7dda\u69cb\u6210:");
-        var ddQuality = pnlQuality.add("dropdownlist", undefined, [
+        // ==========================================
+        // --- TAB 2: STANDARD PREFERENCES ---
+        // (Instantiated first so variables are accessible in Tab 1)
+        // ==========================================
+
+        // 1. General Settings Panel (Renamed from Default Specs, unit removed from module)
+        var pnlCommon = tabSettings.add("panel", undefined, "\u57fa\u672c\u8a2d\u5b9a (General Settings)");
+        pnlCommon.orientation = "column";
+        pnlCommon.alignChildren = ["fill", "top"];
+        pnlCommon.spacing = 6;
+        pnlCommon.margins = 6;
+
+        var rowDef1 = pnlCommon.add("group");
+        rowDef1.orientation = "row";
+        rowDef1.spacing = 10;
+        rowDef1.add("statictext", undefined, "\u30e2\u30b8\u30e5\u30fc\u30eb:");
+        var etModule = rowDef1.add("edittext", undefined, "2.0"); etModule.characters = 4;
+        rowDef1.add("statictext", undefined, "\u5727\u529b\u89d2 (deg):");
+        var etAlpha = rowDef1.add("edittext", undefined, "20"); etAlpha.characters = 4;
+        rowDef1.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7 (mm):");
+        var etBacklash = rowDef1.add("edittext", undefined, "0.15"); etBacklash.characters = 4;
+        rowDef1.add("statictext", undefined, "\u30ab\u30fc\u30d5\u88dc\u6b63 (mm):");
+        var etKerf = rowDef1.add("edittext", undefined, "0.0"); etKerf.characters = 4;
+
+        var rowDef2 = pnlCommon.add("group");
+        rowDef2.orientation = "row";
+        rowDef2.spacing = 10;
+        rowDef2.add("statictext", undefined, "\u6a19\u6e96\u8ef8\u7a74\u5f84 (mm):");
+        var etDefShaft = rowDef2.add("edittext", undefined, "5.0"); etDefShaft.characters = 4;
+        rowDef2.add("statictext", undefined, "\u8ef8\u7a74\u5f62\u72b6:");
+        var ddDefShaftType = rowDef2.add("dropdownlist", undefined, ["\u4e38\u7a74 (Round)", "D\u30ab\u30c3\u30c8 (D-Cut)", "\u30ad\u30fc\u6e4d (Keyway)", "\u306a\u3057 (None)"]);
+        ddDefShaftType.selection = 0;
+
+        rowDef2.add("statictext", undefined, " \u539a\u307f\u57fa\u6e96:");
+        var rbDefThickRoot = rowDef2.add("radiobutton", undefined, "\u6b6f\u5e95\u304b\u3089");
+        var rbDefThickTip = rowDef2.add("radiobutton", undefined, "\u6b6f\u5148\u304b\u3089");
+        rbDefThickRoot.value = true;
+
+        // 2. CAD / CAM Styles & Precision Panel
+        var pnlQuality = tabSettings.add("panel", undefined, "\u63cf\u753b\u30b9\u30bf\u30a4\u30eb\u30fbCAD/CAM\u4ed5\u69d8 (Styles & Appearances)");
+        pnlQuality.orientation = "column";
+        pnlQuality.alignChildren = ["fill", "top"];
+        pnlQuality.spacing = 6;
+        pnlQuality.margins = 6;
+
+        var rowQ1 = pnlQuality.add("group");
+        rowQ1.orientation = "row";
+        rowQ1.spacing = 10;
+        rowQ1.add("statictext", undefined, "\u66f2\u7dda\u7cbe\u5ea6:");
+        var ddQuality = rowQ1.add("dropdownlist", undefined, [
             "\u9ad8\u7cbe\u5ea6\u30d9\u30b8\u30a7 [\u63a8\u5968] (8-10\u70b9/\u6b6f)",
             "\u6700\u5c0f\u30d9\u30b8\u30a7 [\u69cb\u6210B] (6\u70b9/\u6b6f)",
             "\u9ad8\u5bc6\u5ea6\u30dd\u30ea\u30e9\u30a4\u30f3 [\u5f93\u6765] (~25\u70b9/\u6b6f)"
         ]);
-        ddQuality.selection = 0; // Default: Recommended Bezier
+        ddQuality.selection = 0;
 
-        // --- Laser Fabrication Adjustments ---
-        // \u5b9f\u52d5\u52a0\u5de5\u8abf\u6574 (Fabrication & Options)
-        var pnlFab = win.add("panel", undefined, "\u5b9f\u52d5\u52a0\u5de5\u8abf\u6574 (Fabrication & Options)");
-        pnlFab.orientation = "column";
-        pnlFab.alignChildren = ["fill", "top"];
-        pnlFab.spacing = 8;
-        pnlFab.margins = 12;
+        rowQ1.add("statictext", undefined, " \u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8:");
+        var ddStylePreset = rowQ1.add("dropdownlist", undefined, [
+            "\u30ec\u30fc\u30b6\u30fc\u52a0\u5de5\u6a19\u6e96 (Laser Hairline Red)",
+            "JIS \u6a5f\u68b0\u88fd\u56f3\u6a19\u6e96 (0.5mm \u592a\u7dda/\u7d30\u7dda)",
+            "CNC\u5207\u524a / 3D\u30d7\u30ea\u30f3\u30c8\u6a19\u6e96",
+            "\u30ab\u30b9\u30bf\u30e0 (Custom)"
+        ]);
+        ddStylePreset.selection = 0;
 
-        var rowFab1 = pnlFab.add("group");
-        rowFab1.orientation = "row";
-        rowFab1.alignChildren = ["left", "center"];
-        rowFab1.spacing = 15;
+        var btnDetailStyle = rowQ1.add("button", undefined, "\u8a73\u7d30\u30b9\u30bf\u30a4\u30eb\u8a2d\u5b9a (\u8272\u30fb\u7dda\u5e45\u30fb\u7834\u7dda)...");
+        btnDetailStyle.onClick = function () {
+            showStyleDetailModal(win, currentStyles, function (updated) {
+                currentStyles = updated;
+                ddStylePreset.selection = 3;
+            });
+        };
 
-        // \u30d0\u30c3\u30af\u30e9\u30c3\u30b7 (mm):
-        rowFab1.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7 (mm):");
-        var etBacklash = rowFab1.add("edittext", undefined, "0.15");
-        etBacklash.characters = 5;
+        ddStylePreset.onChange = function () {
+            var idx = ddStylePreset.selection ? ddStylePreset.selection.index : 0;
+            if (idx === 0) currentStyles = cloneObj(STYLE_PRESETS.laser);
+            else if (idx === 1) currentStyles = cloneObj(STYLE_PRESETS.jis);
+            else if (idx === 2) currentStyles = cloneObj(STYLE_PRESETS.cnc);
+        };
 
-        // \u914d\u7f6e\u89d2\u5ea6 (deg):
-        rowFab1.add("statictext", undefined, "\u914d\u7f6e\u89d2\u5ea6 (deg):");
-        var etAngle = rowFab1.add("edittext", undefined, "0");
-        etAngle.characters = 5;
+        // 3. Standard Creation Options Defaults Panel
+        var pnlStdOptions = tabSettings.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3\u521d\u671f\u8a2d\u5b9a (Default Creation Options)");
+        pnlStdOptions.orientation = "column";
+        pnlStdOptions.alignChildren = ["fill", "top"];
+        pnlStdOptions.spacing = 4;
+        pnlStdOptions.margins = 6;
 
-        var rowFab2 = pnlFab.add("group");
-        rowFab2.orientation = "row";
-        rowFab2.alignChildren = ["left", "center"];
-        rowFab2.spacing = 15;
+        var rowOptDef1 = pnlStdOptions.add("group");
+        rowOptDef1.orientation = "row";
+        rowOptDef1.spacing = 15;
+        var chkDefCompound = rowOptDef1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
+        chkDefCompound.value = true;
+        var chkDefPitchSameLayer = rowOptDef1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
+        chkDefPitchSameLayer.value = false;
+        var chkDefCenterSameGroup = rowOptDef1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
+        chkDefCenterSameGroup.value = true;
 
-        // \u6b6f\u5143\u9685\u8089\u66f2\u7dda(\u30c8\u30ed\u30b3\u30a4\u30c9)\u3092\u751f\u6210
-        var chkFillet = rowFab2.add("checkbox", undefined, "\u6b6f\u5143\u9685\u8089\u66f2\u7dda(\u30c8\u30ed\u30b3\u30a4\u30c9)\u3092\u751f\u6210");
-        chkFillet.value = true;
+        var rowOptDef2 = pnlStdOptions.add("group");
+        rowOptDef2.orientation = "row";
+        rowOptDef2.spacing = 15;
+        var chkDefDrawLabel = rowOptDef2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
+        chkDefDrawLabel.value = true;
+        var chkDefIndividualTeeth = rowOptDef2.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
+        chkDefIndividualTeeth.value = false;
+        var rbDefSkelSingle = rowOptDef2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        rbDefSkelSingle.value = true;
+        var rbDefSkelPerStage = rowOptDef2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
 
-        // \u30d4\u30c3\u30c1\u5186\u30fb\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u63cf\u753b
-        var chkGuides = rowFab2.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u30fb\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u63cf\u753b");
-        chkGuides.value = true;
+        // 4. Layers & Naming Conventions Panel
+        var pnlNaming = tabSettings.add("panel", undefined, "\u30ec\u30a4\u30e4\u30fc\u30fb\u547d\u540d\u898f\u5247 (Layers & Naming)");
+        pnlNaming.orientation = "column";
+        pnlNaming.alignChildren = ["fill", "top"];
+        pnlNaming.spacing = 6;
+        pnlNaming.margins = 6;
 
-        // \u4ed5\u69d8\u30e9\u30d9\u30eb\u30c6\u30ad\u30b9\u30c8\u5370\u5b57
-        var chkText = rowFab2.add("checkbox", undefined, "\u4ed5\u69d8\u30e9\u30d9\u30eb\u30c6\u30ad\u30b9\u30c8\u5370\u5b57");
-        chkText.value = true;
+        var rowN1 = pnlNaming.add("group");
+        rowN1.orientation = "row";
+        rowN1.spacing = 10;
+        rowN1.add("statictext", undefined, "\u547d\u540d\u30d7\u30ea\u30bb\u30c3\u30c8:");
+        var ddNamingPreset = rowN1.add("dropdownlist", undefined, [
+            "\u6a19\u6e96 (Standard: T1, T1_1, T1_dwg, G1_z18)",
+            "\u8a2d\u8a08\u8af8\u5143 (Engineering: Train_T1_m2, T1_L1, G1_m2_z18)",
+            "\u52a0\u5de5\u7528 (CAM: CUT_T1, T1_L1, REG_T1, G1_z18)",
+            "\u30ab\u30b9\u30bf\u30e0 (Custom: \u81ea\u7531\u7de8\u96c6)"
+        ]);
+        ddNamingPreset.selection = 0;
 
-        // --- Real-time Calculation Summary ---
-        // \u8a08\u7b97\u30d7\u30ec\u30d3\u30e5\u30fc (Calculation Preview)
-        var pnlCalc = win.add("panel", undefined, "\u8a08\u7b97\u30d7\u30ec\u30d3\u30e5\u30fc (Calculation Preview)");
-        pnlCalc.orientation = "column";
-        pnlCalc.alignChildren = ["left", "top"];
-        pnlCalc.margins = 12;
-        pnlCalc.spacing = 4;
+        var rowN2 = pnlNaming.add("group");
+        rowN2.orientation = "row";
+        rowN2.spacing = 8;
+        rowN2.add("statictext", undefined, "\u8f2a\u5217:");
+        var etTemplateMain = rowN2.add("edittext", undefined, "{train}"); etTemplateMain.characters = 8;
+        rowN2.add("statictext", undefined, "\u6bb5:");
+        var etTemplateSub = rowN2.add("edittext", undefined, "{train}_{layer}"); etTemplateSub.characters = 12;
+        rowN2.add("statictext", undefined, "\u56f3\u9762:");
+        var etTemplateDwg = rowN2.add("edittext", undefined, "{train}_dwg"); etTemplateDwg.characters = 10;
+        rowN2.add("statictext", undefined, "\u30ae\u30a2:");
+        var etTemplateGear = rowN2.add("edittext", undefined, "{id}_{kind}_z{z}"); etTemplateGear.characters = 12;
 
-        // \u4e2d\u5fc3\u8ddd\u96e2 a: --- mm
-        var lblCenterDist = pnlCalc.add("statictext", undefined, "\u4e2d\u5fc3\u8ddd\u96e2 a: --- mm");
-        // \u6e1b\u901f\u6bd4 i: ---
-        var lblRatio = pnlCalc.add("statictext", undefined, "\u6e1b\u901f\u6bd4 i: ---");
-        // \u63a8\u5b9a\u30a2\u30f3\u30ab\u30fc\u6570: ---
-        var lblAnchors = pnlCalc.add("statictext", undefined, "\u63a8\u5b9a\u30a2\u30f3\u30ab\u30fc\u6570: ---");
-        var lblWarning = pnlCalc.add("statictext", undefined, "");
-        lblWarning.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0.8, 0.1, 0.1, 1], 1);
-
-        function updatePreview() {
-            var m = parseFloat(etModule.text);
-            var alphaDeg = parseFloat(etAlpha.text);
-            var z1 = parseInt(etG1Z.text, 10);
-            var z2 = parseInt(etG2Z.text, 10);
-
-            if (!isNaN(m) && !isNaN(z1) && !isNaN(z2) && z1 > 0 && z2 > 0) {
-                var a = m * (z1 + z2) / 2.0;
-                var ratio = (z2 / z1).toFixed(2);
-                lblCenterDist.text = "\u4e2d\u5fc3\u8ddd\u96e2 a: " + a.toFixed(2) + " mm  |  G1 PCD: " + (m * z1).toFixed(1) + " mm  |  G2 PCD: " + (m * z2).toFixed(1) + " mm";
-                lblRatio.text = "\u6e1b\u901f\u6bd4 i: " + ratio + " (1 : " + ratio + ")";
-
-                var alphaRad = (isNaN(alphaDeg) ? 20 : alphaDeg) * (Math.PI / 180);
-                var zMin = InvoluteMath.getUndercutLimit(alphaRad);
-
-                var qIdx = ddQuality.selection ? ddQuality.selection.index : 0;
-                var g1Pts, g2Pts;
-                if (qIdx === 1) { // Minimal (6 pts/tooth)
-                    g1Pts = 6 * z1;
-                    g2Pts = 6 * z2;
-                } else if (qIdx === 2) { // Polyline (~25 pts/tooth)
-                    g1Pts = 25 * z1;
-                    g2Pts = 25 * z2;
-                } else { // Recommended (8-10 pts/tooth)
-                    g1Pts = (z1 < zMin ? 10 : 8) * z1;
-                    g2Pts = (z2 < zMin ? 10 : 8) * z2;
-                }
-                lblAnchors.text = "\u63a8\u5b9a\u30a2\u30f3\u30ab\u30fc\u6570: G1: ~" + g1Pts + "\u70b9 / G2: ~" + g2Pts + "\u70b9";
-
-                var warnings = [];
-                if (z1 < zMin) {
-                    warnings.push("\u30ae\u30a21 \u5207\u4e0b\u3052\u6ce8\u610f (z1=" + z1 + " < \u9650\u754c" + zMin.toFixed(1) + ")");
-                }
-                if (z2 < zMin) {
-                    warnings.push("\u30ae\u30a22 \u5207\u4e0b\u3052\u6ce8\u610f (z2=" + z2 + " < \u9650\u754c" + zMin.toFixed(1) + ")");
-                }
-                lblWarning.text = warnings.length > 0 ? ("! " + warnings.join(", ")) : "\u5e7e\u4f55\u5b66\u5e72\u6e09: \u306a\u3057 (\u6b63\u5e38)";
+        function applyNamingPreset(idx) {
+            if (idx === 0) {
+                etTemplateMain.text = "{train}";
+                etTemplateSub.text = "{train}_{layer}";
+                etTemplateDwg.text = "{train}_dwg";
+                etTemplateGear.text = "{id}_{kind}_z{z}";
+            } else if (idx === 1) {
+                etTemplateMain.text = "Train_{train}_m{m}";
+                etTemplateSub.text = "{train}_L{layer}";
+                etTemplateDwg.text = "DWG_{train}_Skeleton";
+                etTemplateGear.text = "{id}_m{m}_z{z}_d{d}_h{shaft}";
+            } else if (idx === 2) {
+                etTemplateMain.text = "CUT_{train}";
+                etTemplateSub.text = "{train}_L{layer}";
+                etTemplateDwg.text = "REG_{train}";
+                etTemplateGear.text = "{id}_z{z}";
             }
         }
 
-        etModule.onChanging = updatePreview;
-        etAlpha.onChanging = updatePreview;
-        etG1Z.onChanging = updatePreview;
-        etG2Z.onChanging = updatePreview;
-        ddQuality.onChange = updatePreview;
+        ddNamingPreset.onChange = function () {
+            if (ddNamingPreset.selection && ddNamingPreset.selection.index < 3) {
+                applyNamingPreset(ddNamingPreset.selection.index);
+            }
+        };
 
-        updatePreview();
+        var onCustomNaming = function () { ddNamingPreset.selection = 3; };
+        etTemplateMain.onChanging = onCustomNaming;
+        etTemplateSub.onChanging = onCustomNaming;
+        etTemplateDwg.onChanging = onCustomNaming;
+        etTemplateGear.onChanging = onCustomNaming;
 
-        // --- Action Buttons ---
+        // 5. Diagnostics & Log Preferences Panel
+        var pnlToleranceLog = tabSettings.add("panel", undefined, "\u89e3\u6790\u30c8\u30ec\u30e9\u30f3\u30b9\u30fb\u8a3a\u65ad\u30ed\u30b0 (Tolerance & Diagnostics)");
+        pnlToleranceLog.orientation = "column";
+        pnlToleranceLog.alignChildren = ["fill", "top"];
+        pnlToleranceLog.spacing = 6;
+        pnlToleranceLog.margins = 6;
+
+        var rowTol1 = pnlToleranceLog.add("group");
+        rowTol1.orientation = "row";
+        rowTol1.spacing = 10;
+        rowTol1.add("statictext", undefined, "\u565b\u5408\u8a31\u5bb9\u8aa4\u5dee (mm):");
+        var etTolerance = rowTol1.add("edittext", undefined, "2.5"); etTolerance.characters = 4;
+        rowTol1.add("statictext", undefined, "\u8ef8\u9593\u6c7a\u5b9a\u30e2\u30fc\u30c9:");
+        var ddSnapMode = rowTol1.add("dropdownlist", undefined, [
+            "\u5b9f\u5bf8\u4f4d\u7f6e\u56fa\u5b9a & \u8ee2\u4f4dx\u81ea\u52d5\u9006\u7b97 [\u63a8\u5968]",
+            "\u6a5f\u69cb\u7406\u8ad6\u8ddd\u96e2\u306b\u30b9\u30ca\u30c3\u30d7",
+            "\u5186\u306e\u4f4d\u7f6e\u306b\u72ec\u7acb\u914d\u7f6e (Free)"
+        ]);
+        ddSnapMode.selection = 0;
+        var chkCrossLayerMesh = rowTol1.add("checkbox", undefined, "\u7570\u30ec\u30a4\u30e4\u30fc\u9593\u565b\u5408\u3092\u8a31\u5bb9");
+        chkCrossLayerMesh.value = false;
+
+        var rowLog1 = pnlToleranceLog.add("group");
+        rowLog1.orientation = "row";
+        rowLog1.spacing = 8;
+        var chkAutoRecordLog = rowLog1.add("checkbox", undefined, "\u8f2a\u5217\u4f5c\u6210\u6642\u306b\u81ea\u52d5\u3067\u8a08\u7b97\u30ed\u30b0\u4fdd\u5b58\u3092\u6709\u52b9\u5316");
+        chkAutoRecordLog.value = false;
+        rowLog1.add("statictext", undefined, "\u4fdd\u5b58\u5148:");
+
+        var defaultLogDir = "";
+        try {
+            if (app.documents && app.documents.length > 0 && app.activeDocument.saved) {
+                defaultLogDir = app.activeDocument.path.fsName;
+            }
+        } catch (eDocPath) {}
+        if (!defaultLogDir) {
+            try {
+                if (typeof Folder !== "undefined" && Folder.desktop) {
+                    defaultLogDir = Folder.desktop.fsName;
+                }
+            } catch (eDesk) {}
+        }
+        var etLogFolder = rowLog1.add("edittext", undefined, defaultLogDir);
+        etLogFolder.preferredSize = [130, 20];
+
+        var btnBrowseFolder = rowLog1.add("button", undefined, "\u53c2\u7167 (Explorer)...");
+        btnBrowseFolder.onClick = function () {
+            try {
+                var selFile = File.openDialog(
+                    "\u30ed\u30b0\u4fdd\u5b58\u5148\u30d5\u30a9\u30eb\u30c0\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044",
+                    "すべてのファイル:*.*"
+                );
+                if (selFile) {
+                    var targetDir = selFile.parent ? selFile.parent.fsName : selFile.fsName;
+                    etLogFolder.text = targetDir;
+                }
+            } catch (eSel) {}
+        };
+
+        var btnOpenFolder = rowLog1.add("button", undefined, "\u30d5\u30a9\u30eb\u30c0\u3092\u958b\u304f");
+        btnOpenFolder.onClick = function () {
+            try {
+                var f = new Folder(etLogFolder.text || "~");
+                if (!f.exists) f.create();
+                f.execute();
+            } catch (eExp) {}
+        };
+
+        // 6. Settings Profile I/O Panel (Renamed reset button to "設定を初期化")
+        var pnlProfileIO = tabSettings.add("panel", undefined, "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u5165\u51fa\u529b (Profile Import / Export)");
+        pnlProfileIO.orientation = "row";
+        pnlProfileIO.alignChildren = ["left", "center"];
+        pnlProfileIO.spacing = 10;
+        pnlProfileIO.margins = 8;
+
+        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u66f8\u304d\u51fa\u3057 (Save JSON)...");
+        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u8aad\u307f\u8fbc\u307f (Load JSON)...");
+        var btnResetFactory = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u521d\u671f\u5316");
+
+        btnExportSettings.onClick = function () {
+            var profile = {
+                version: "1.0.0",
+                timestamp: String(new Date()),
+                defaultSpecs: {
+                    m: parseFloat(etModule.text) || 2.0,
+                    alphaDeg: parseFloat(etAlpha.text) || 20.0,
+                    backlash: parseFloat(etBacklash.text) || 0.15,
+                    kerf: parseFloat(etKerf.text) || 0.0,
+                    shaftDiameter: parseFloat(etDefShaft.text) || 5.0,
+                    shaftTypeIndex: ddDefShaftType.selection ? ddDefShaftType.selection.index : 0,
+                    thicknessMode: rbDefThickTip.value ? "tip" : "root"
+                },
+                styles: currentStyles,
+                creationOptions: {
+                    compound: chkDefCompound.value,
+                    pitchSameLayer: chkDefPitchSameLayer.value,
+                    centerSameGroup: chkDefCenterSameGroup.value,
+                    drawLabel: chkDefDrawLabel.value,
+                    individualTeeth: chkDefIndividualTeeth.value,
+                    skelMode: rbDefSkelPerStage.value ? "per_stage" : "single"
+                },
+                options: {
+                    pathQualityIndex: ddQuality.selection ? ddQuality.selection.index : 0,
+                    stylePresetIndex: ddStylePreset.selection ? ddStylePreset.selection.index : 0
+                },
+                naming: {
+                    presetIndex: ddNamingPreset.selection ? ddNamingPreset.selection.index : 0,
+                    mainLayer: etTemplateMain.text,
+                    subLayer: etTemplateSub.text,
+                    dwgLayer: etTemplateDwg.text,
+                    gearGroup: etTemplateGear.text
+                },
+                analysisAndLog: {
+                    toleranceMm: parseFloat(etTolerance.text) || 2.5,
+                    snapModeIndex: ddSnapMode.selection ? ddSnapMode.selection.index : 0,
+                    allowCrossLayerMeshing: chkCrossLayerMesh.value,
+                    autoRecordLog: chkAutoRecordLog.value,
+                    logFolder: etLogFolder.text
+                }
+            };
+            exportSettingsProfile(profile);
+        };
+
+        btnImportSettings.onClick = function () {
+            importSettingsProfile(function (profile) {
+                if (profile.defaultSpecs) {
+                    if (profile.defaultSpecs.m !== undefined) etModule.text = String(profile.defaultSpecs.m);
+                    if (profile.defaultSpecs.alphaDeg !== undefined) etAlpha.text = String(profile.defaultSpecs.alphaDeg);
+                    if (profile.defaultSpecs.backlash !== undefined) etBacklash.text = String(profile.defaultSpecs.backlash);
+                    if (profile.defaultSpecs.kerf !== undefined) etKerf.text = String(profile.defaultSpecs.kerf);
+                    if (profile.defaultSpecs.shaftDiameter !== undefined) etDefShaft.text = String(profile.defaultSpecs.shaftDiameter);
+                    if (profile.defaultSpecs.shaftTypeIndex !== undefined && ddDefShaftType.items[profile.defaultSpecs.shaftTypeIndex]) {
+                        ddDefShaftType.selection = profile.defaultSpecs.shaftTypeIndex;
+                    }
+                    if (profile.defaultSpecs.thicknessMode === "tip") rbDefThickTip.value = true;
+                    else rbDefThickRoot.value = true;
+                }
+                if (profile.styles) {
+                    currentStyles = cloneObj(profile.styles);
+                    ddStylePreset.selection = 3;
+                }
+                if (profile.creationOptions) {
+                    if (profile.creationOptions.compound !== undefined) chkDefCompound.value = !!profile.creationOptions.compound;
+                    if (profile.creationOptions.pitchSameLayer !== undefined) chkDefPitchSameLayer.value = !!profile.creationOptions.pitchSameLayer;
+                    if (profile.creationOptions.centerSameGroup !== undefined) chkDefCenterSameGroup.value = !!profile.creationOptions.centerSameGroup;
+                    if (profile.creationOptions.drawLabel !== undefined) chkDefDrawLabel.value = !!profile.creationOptions.drawLabel;
+                    if (profile.creationOptions.individualTeeth !== undefined) chkDefIndividualTeeth.value = !!profile.creationOptions.individualTeeth;
+                    if (profile.creationOptions.skelMode === "per_stage") rbDefSkelPerStage.value = true;
+                    else rbDefSkelSingle.value = true;
+                }
+                if (profile.options) {
+                    if (profile.options.pathQualityIndex !== undefined && ddQuality.items[profile.options.pathQualityIndex]) {
+                        ddQuality.selection = profile.options.pathQualityIndex;
+                    }
+                    if (profile.options.stylePresetIndex !== undefined && ddStylePreset.items[profile.options.stylePresetIndex]) {
+                        ddStylePreset.selection = profile.options.stylePresetIndex;
+                    }
+                }
+                if (profile.naming) {
+                    if (profile.naming.presetIndex !== undefined && ddNamingPreset.items[profile.naming.presetIndex]) {
+                        ddNamingPreset.selection = profile.naming.presetIndex;
+                    }
+                    if (profile.naming.mainLayer !== undefined) etTemplateMain.text = profile.naming.mainLayer;
+                    if (profile.naming.subLayer !== undefined) etTemplateSub.text = profile.naming.subLayer;
+                    if (profile.naming.dwgLayer !== undefined) etTemplateDwg.text = profile.naming.dwgLayer;
+                    if (profile.naming.gearGroup !== undefined) etTemplateGear.text = profile.naming.gearGroup;
+                }
+                if (profile.analysisAndLog) {
+                    if (profile.analysisAndLog.toleranceMm !== undefined) etTolerance.text = String(profile.analysisAndLog.toleranceMm);
+                    if (profile.analysisAndLog.snapModeIndex !== undefined && ddSnapMode.items[profile.analysisAndLog.snapModeIndex]) {
+                        ddSnapMode.selection = profile.analysisAndLog.snapModeIndex;
+                    }
+                    if (profile.analysisAndLog.allowCrossLayerMeshing !== undefined) chkCrossLayerMesh.value = !!profile.analysisAndLog.allowCrossLayerMeshing;
+                    if (profile.analysisAndLog.autoRecordLog !== undefined) chkAutoRecordLog.value = !!profile.analysisAndLog.autoRecordLog;
+                    if (profile.analysisAndLog.logFolder !== undefined) etLogFolder.text = profile.analysisAndLog.logFolder;
+                }
+                updatePreview();
+            });
+        };
+
+        btnResetFactory.onClick = function () {
+            etModule.text = "2.0";
+            etAlpha.text = "20";
+            etBacklash.text = "0.15";
+            etKerf.text = "0.0";
+            etDefShaft.text = "5.0";
+            ddDefShaftType.selection = 0;
+            rbDefThickRoot.value = true;
+            currentStyles = cloneObj(STYLE_PRESETS.laser);
+            ddStylePreset.selection = 0;
+            ddQuality.selection = 0;
+            chkDefCompound.value = true;
+            chkDefPitchSameLayer.value = false;
+            chkDefCenterSameGroup.value = true;
+            chkDefDrawLabel.value = true;
+            chkDefIndividualTeeth.value = false;
+            rbDefSkelSingle.value = true;
+            ddNamingPreset.selection = 0;
+            applyNamingPreset(0);
+            etTolerance.text = "2.5";
+            ddSnapMode.selection = 0;
+            chkCrossLayerMesh.value = false;
+            chkAutoRecordLog.value = false;
+            updatePreview();
+            alert("\u8a2d\u5b9a\u3092\u521d\u671f\u5316\u3057\u307e\u3057\u305f\u3002");
+        };
+
+        // ==========================================
+        // --- TAB 1: GEAR CREATION ---
+        // ==========================================
+
+        // 1. Mechanism Type Selector Panel (Placed FIRST as requested)
+        var pnlType = tabCreate.add("panel", undefined, "\u6a5f\u69cb\u30bf\u30a4\u30d7\u9078\u629e (Mechanism Type)");
+        pnlType.orientation = "row";
+        pnlType.alignChildren = ["left", "center"];
+        pnlType.spacing = 15;
+        pnlType.margins = 8;
+
+        pnlType.add("statictext", undefined, "\u6a5f\u69cb\u30bf\u30a4\u30d7:");
+        var ddMechanism = pnlType.add("dropdownlist", undefined, [
+            "\u5206\u5c90\u8f2a\u5217 (Branched Gear Train - Spur & Rack & Internal)",
+            "\u6a19\u6e96\u904a\u661f\u6b6f\u8eca (2K-H Planetary Set)",
+            "\u4e0d\u601d\u8b70\u904a\u661f\u6b6f\u8eca (3K Paradoxical Planetary)"
+        ]);
+        ddMechanism.selection = 0;
+
+        // 2. Circle Object Topology Panel (Placed SECOND as requested)
+        var pnlCircle = tabCreate.add("panel", undefined, "\u5186\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u9023\u643a (Object-Driven Input)");
+        pnlCircle.orientation = "column";
+        pnlCircle.alignChildren = ["fill", "top"];
+        pnlCircle.spacing = 4;
+        pnlCircle.margins = 6;
+
+        var rowCircleTop = pnlCircle.add("group");
+        rowCircleTop.orientation = "row";
+        rowCircleTop.alignChildren = ["left", "center"];
+        rowCircleTop.spacing = 10;
+
+        var chkUseCircle = rowCircleTop.add("checkbox", undefined, "\u5186\u304b\u3089\u6b6f\u8eca\u3092\u4f5c\u6210");
+        chkUseCircle.value = (selectedCircles.length > 0);
+        chkUseCircle.enabled = (selectedCircles.length > 0);
+
+        rowCircleTop.add("statictext", undefined, "  \u691c\u51fa\u5143:");
+        var rbSourceSelection = rowCircleTop.add("radiobutton", undefined, "\u9078\u629e\u30aa\u30d6\u30b8\u30a8\u30af\u30c8");
+        var rbSourceAllLayers = rowCircleTop.add("radiobutton", undefined, "\u5168\u30ec\u30a4\u30e4\u30fc");
+        rbSourceSelection.value = true;
+
+        var btnRescan = rowCircleTop.add("button", undefined, "\u5186\u3092\u518d\u30b9\u30ad\u30e3\u30f3");
+
+        var lblCircleStatus = rowCircleTop.add("statictext", undefined, "");
+        lblCircleStatus.characters = 28;
+
+        var rowCircleOptions = pnlCircle.add("group");
+        rowCircleOptions.orientation = "row";
+        rowCircleOptions.alignChildren = ["left", "center"];
+        rowCircleOptions.spacing = 15;
+        rowCircleOptions.enabled = (selectedCircles.length > 0);
+
+        rowCircleOptions.add("statictext", undefined, "\u76f4\u5f84\u306e\u89e3\u91c8:");
+        var rbCirclePitch = rowCircleOptions.add("radiobutton", undefined, "\u30d4\u30c3\u30c1\u5186 (\u565b\u5408\u57fa\u6e96)");
+        rbCirclePitch.value = true;
+        var rbCircleTip = rowCircleOptions.add("radiobutton", undefined, "\u6b6f\u5148\u5186 (\u5916\u5f84\u5236\u7d04)");
+
+        rowCircleOptions.add("statictext", undefined, "  \u5143\u306e\u5186\u306e\u51e6\u7406:");
+        var ddCircleFate = rowCircleOptions.add("dropdownlist", undefined, [
+            "\u30ac\u30a4\u30c9\u7dda\u306b\u5909\u63db (Guide)",
+            "\u524a\u9664\u3057\u3066\u7f6e\u63db (Delete)",
+            "\u305d\u306e\u307e\u307e\u4fdd\u6301 (Keep)"
+        ]);
+        ddCircleFate.selection = 0;
+
+        var grpMultiCircle = pnlCircle.add("group");
+        grpMultiCircle.orientation = "row";
+        grpMultiCircle.alignChildren = ["left", "center"];
+        grpMultiCircle.spacing = 10;
+        grpMultiCircle.enabled = (selectedCircles.length > 1);
+
+        grpMultiCircle.add("statictext", undefined, "\u914d\u7f6e\u4f4d\u7f6e:");
+        var rbCircleOrigPos = grpMultiCircle.add("radiobutton", undefined, "\u5143\u306e\u5186\u306b\u6e96\u62e0\u3057\u3066\u69cb\u7bc9");
+        var rbCircleCustomPos = grpMultiCircle.add("radiobutton", undefined, "\u65b0\u305f\u306b\u4f4d\u7f6e\u3092\u6307\u5b9a");
+        // FIXED: Default to custom pos so placement coordinates are NOT disabled by default!
+        rbCircleOrigPos.value = false;
+        rbCircleCustomPos.value = true;
+
+        var btnAutoBuildTrain = grpMultiCircle.add("button", undefined, "\u5186\u304b\u3089\u8f2a\u5217\u30c4\u30ea\u30fc\u3092\u81ea\u52d5\u69cb\u7bc9");
+        btnAutoBuildTrain.enabled = (selectedCircles.length > 1);
+
+        // 3. Mechanism Configuration Panel
+        var pnlConfig = tabCreate.add("panel", undefined, "\u6b6f\u8eca\u8af8\u5143\u30fb\u69cb\u6210 (Mechanism Configuration)");
+        pnlConfig.orientation = "stack";
+        pnlConfig.alignChildren = ["fill", "top"];
+        pnlConfig.spacing = 8;
+        pnlConfig.margins = 10;
+        pnlConfig.preferredSize.height = 360;
+
+        // Subpanel A: Branched Gear Train
+        var pnlTrain = pnlConfig.add("group");
+        pnlTrain.orientation = "column";
+        pnlTrain.alignChildren = ["fill", "top"];
+        pnlTrain.spacing = 4;
+
+        // Top Row: Train ID moved here from settings tab
+        var rowTrainTop = pnlTrain.add("group");
+        rowTrainTop.orientation = "row";
+        rowTrainTop.alignChildren = ["left", "center"];
+        rowTrainTop.spacing = 10;
+        rowTrainTop.add("statictext", undefined, "\u8f2a\u5217ID:");
+        var etTrainId = rowTrainTop.add("edittext", undefined, initialTrainId);
+        etTrainId.characters = 6;
+        var btnAutoTrainId = rowTrainTop.add("button", undefined, "\u7a7a\u304dID\u81ea\u52d5\u63a1\u756a");
+        btnAutoTrainId.onClick = function () {
+            var doc = null;
+            try { if (app.documents.length > 0) doc = app.activeDocument; } catch (e) {}
+            etTrainId.text = getSuggestedTrainId(doc);
+        };
+        rowTrainTop.add("statictext", undefined, "(\u65e2\u5b58\u30ec\u30a4\u30e4\u30fc\u3068\u91cd\u8907\u3057\u306a\u3044ID\u3092\u6307\u5b9a)");
+
+        // Expanded 10-Row Train Table
+        var trainListBox = pnlTrain.add("listbox", undefined, [], {
+            numberOfColumns: 13,
+            showHeaders: true,
+            columnTitles: [
+                "ID",
+                "\u7a2e\u5225",
+                "\u6bb5",
+                "\u89aa",
+                "\u63a5\u7d9a",
+                "\u6b6f\u6570/\u8af8\u5143",
+                "\u6e1b\u901f\u6bd4 i",
+                "\u5916\u5f84/\u30ea\u30e0\u539a",
+                "m",
+                "\u03b1",
+                "\u8ef8\u7a74/\u5f62\u72b6",
+                "\u89aa\u57fa\u6e96\u89d2\u5ea6",
+                "\u565b\u5408\u72b6\u614b"
+            ],
+            columnWidths: [45, 45, 30, 45, 45, 70, 60, 95, 35, 30, 85, 75, 80]
+        });
+        trainListBox.preferredSize = [680, 210];
+
+        // Node Detail Editor Area (Parent first, then teeth)
+        var pnlNodeDetail = pnlTrain.add("panel", undefined, "\u9078\u629e\u30ae\u30a2\u306e\u500b\u5225\u8a2d\u5b9a (Selected Gear Settings)");
+        pnlNodeDetail.orientation = "column";
+        pnlNodeDetail.alignChildren = ["fill", "top"];
+        pnlNodeDetail.spacing = 4;
+        pnlNodeDetail.margins = 6;
+
+        // Row 1: ID Editor with Enter protection and validation
+        var rowNode1 = pnlNodeDetail.add("group");
+        rowNode1.orientation = "row";
+        rowNode1.alignChildren = ["left", "center"];
+        rowNode1.spacing = 8;
+        rowNode1.add("statictext", undefined, "\u30ae\u30a2ID:");
+        var etNodeId = rowNode1.add("edittext", undefined, "G1");
+        etNodeId.characters = 6;
+        var btnChangeId = rowNode1.add("button", undefined, "ID\u5909\u66f4");
+        var lblIdStatus = rowNode1.add("statictext", undefined, "");
+        lblIdStatus.characters = 25;
+
+        // Row 2: Type, Parent, Relation, Teeth, Angle (Parent-first order!)
+        var rowNode2 = pnlNodeDetail.add("group");
+        rowNode2.orientation = "row";
+        rowNode2.alignChildren = ["left", "center"];
+        rowNode2.spacing = 8;
+        rowNode2.add("statictext", undefined, "\u7a2e\u5225:");
+        var ddNodeKind = rowNode2.add("dropdownlist", undefined, ["\u5916\u6b6f\u8eca (Spur)", "\u5185\u6b6f\u8eca (Internal)", "\u30e9\u30c3\u30af (Rack)"]);
+        ddNodeKind.selection = 0;
+
+        rowNode2.add("statictext", undefined, " \u63a5\u7d9a\u89aa:");
+        var ddNodeParent = rowNode2.add("dropdownlist", undefined, ["(\u306a\u3057 / \u30eb\u30fc\u30c8)"]);
+        ddNodeParent.selection = 0;
+
+        rowNode2.add("statictext", undefined, " \u63a5\u7d9a:");
+        var ddNodeRelation = rowNode2.add("dropdownlist", undefined, ["\u565b\u5408 (Mesh)", "\u540c\u8ef8 (Coaxial)"]);
+        ddNodeRelation.selection = 0;
+
+        var lblNodeZ = rowNode2.add("statictext", undefined, " \u6b6f\u6570:");
+        var etNodeZ = rowNode2.add("edittext", undefined, "18");
+        etNodeZ.characters = 4;
+
+        var lblNodeAngle = rowNode2.add("statictext", undefined, " \u89aa\u57fa\u6e96\u89d2\u5ea6(deg):");
+        lblNodeAngle.helpTip = "\u89aa\u6b6f\u8eca\u306e\u4e2d\u5fc3\u3092\u539f\u70b9\u3068\u3057\u305f\u6975\u5ea7\u6a19\u65b9\u5411 (\u53f3\u5411\u304d0\u5ea6\u3001\u53cd\u6642\u8a08\u56de\u308a)";
+        var etNodeAngle = rowNode2.add("edittext", undefined, "0");
+        etNodeAngle.characters = 4;
+
+        // Row 3: Shaft Diameter & Shape, Rim/Back Height, Profile Shift
+        var rowNode3 = pnlNodeDetail.add("group");
+        rowNode3.orientation = "row";
+        rowNode3.alignChildren = ["left", "center"];
+        rowNode3.spacing = 8;
+
+        rowNode3.add("statictext", undefined, "\u8ef8\u7a74\u5f84:");
+        var etNodeShaft = rowNode3.add("edittext", undefined, "5.0");
+        etNodeShaft.characters = 4;
+        rowNode3.add("statictext", undefined, "mm");
+
+        rowNode3.add("statictext", undefined, " \u5f62\u72b6:");
+        var ddNodeShaftType = rowNode3.add("dropdownlist", undefined, ["\u4e38\u7a74", "D\u30ab\u30c3\u30c8", "\u30ad\u30fc\u6e4d", "\u306a\u3057"]);
+        ddNodeShaftType.selection = 0;
+
+        var lblNodeBackHeight = rowNode3.add("statictext", undefined, " \u539a\u307f/\u80cc\u9762:");
+        var etNodeBackHeight = rowNode3.add("edittext", undefined, "6.0");
+        etNodeBackHeight.characters = 4;
+        rowNode3.add("statictext", undefined, "mm");
+
+        rowNode3.add("statictext", undefined, " \u8ee2\u4f4dx:");
+        var etNodeShift = rowNode3.add("edittext", undefined, "0.0");
+        etNodeShift.characters = 4;
+
+        // Row 4: Stage & Stage Parameters (Module without unit, Alpha, Backlash)
+        var rowNode4 = pnlNodeDetail.add("group");
+        rowNode4.orientation = "row";
+        rowNode4.alignChildren = ["left", "center"];
+        rowNode4.spacing = 8;
+
+        rowNode4.add("statictext", undefined, "\u6bb5\u756a\u53f7:");
+        var etNodeStage = rowNode4.add("edittext", undefined, "1");
+        etNodeStage.characters = 3;
+
+        rowNode4.add("statictext", undefined, " \u30e2\u30b8\u30e5\u30fc\u30eb:");
+        var etNodeModule = rowNode4.add("edittext", undefined, "2.0");
+        etNodeModule.characters = 4;
+
+        rowNode4.add("statictext", undefined, " \u5727\u529b\u89d2(deg):");
+        var etNodeAlpha = rowNode4.add("edittext", undefined, "20");
+        etNodeAlpha.characters = 4;
+
+        rowNode4.add("statictext", undefined, " \u30d0\u30c3\u30af\u30e9\u30c3\u30b7(mm):");
+        var etNodeBacklash = rowNode4.add("edittext", undefined, "0.15");
+        etNodeBacklash.characters = 4;
+
+        // Row 5: Mutilated / Intermittent Gear Settings
+        var rowNode5 = pnlNodeDetail.add("group");
+        rowNode5.orientation = "row";
+        rowNode5.alignChildren = ["left", "center"];
+        rowNode5.spacing = 8;
+
+        var chkNodeMutilated = rowNode5.add("checkbox", undefined, "\u6b20\u6b6f\u30fb\u9593\u6b20\u6b6f\u8eca");
+        var lblActiveTeeth = rowNode5.add("statictext", undefined, " \u6709\u52b9\u6b6f\u6570:");
+        var etActiveTeeth = rowNode5.add("edittext", undefined, "18");
+        etActiveTeeth.characters = 4;
+        var lblStartTooth = rowNode5.add("statictext", undefined, " \u958b\u59cb\u6b6f:");
+        var etStartTooth = rowNode5.add("edittext", undefined, "1");
+        etStartTooth.characters = 3;
+        var lblBlankRadius = rowNode5.add("statictext", undefined, " \u6b20\u6b6f\u533a\u9593:");
+        var ddBlankRadius = rowNode5.add("dropdownlist", undefined, [
+            "\u6b6f\u5e95\u5186 (df) [\u6a19\u6e96]",
+            "\u30d4\u30c3\u30c1\u5186 (d)",
+            "\u6b6f\u5148\u5186 (da) [\u30ed\u30c3\u30af\u9762]"
+        ]);
+        ddBlankRadius.selection = 0;
+
+        // Action Buttons Row
+        var rowNodeBtns = pnlNodeDetail.add("group");
+        rowNodeBtns.orientation = "row";
+        rowNodeBtns.alignChildren = ["left", "center"];
+        rowNodeBtns.spacing = 8;
+
+        var btnAddSpur = rowNodeBtns.add("button", undefined, "+ \u5916\u6b6f\u8eca\u8ffd\u52a0");
+        var btnAddInternal = rowNodeBtns.add("button", undefined, "+ \u5185\u6b6f\u8eca\u8ffd\u52a0");
+        var btnAddRack = rowNodeBtns.add("button", undefined, "+ \u30e9\u30c3\u30af\u8ffd\u52a0");
+        var btnDeleteNode = rowNodeBtns.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
+        var btnImportCSV = rowNodeBtns.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
+
+        // --- View 2: Standard 2K-H Planetary ---
+        var grpPlanetary = pnlConfig.add("group");
+        grpPlanetary.orientation = "column";
+        grpPlanetary.alignment = ["fill", "top"];
+        grpPlanetary.alignChildren = ["fill", "top"];
+        grpPlanetary.spacing = 6;
+
+        var rowPlanetaryMode = grpPlanetary.add("group");
+        rowPlanetaryMode.orientation = "row";
+        rowPlanetaryMode.alignChildren = ["left", "center"];
+        rowPlanetaryMode.spacing = 8;
+        rowPlanetaryMode.add("statictext", undefined, "\u52d5\u4f5c\u30e2\u30fc\u30c9:");
+        var ddPlanetaryMode = rowPlanetaryMode.add("dropdownlist", undefined, [
+            "\u5185\u6b6f\u8eca\u56fa\u5b9a (Ring Fixed) [i = 1 + zr/zs]",
+            "\u592a\u967d\u56fa\u5b9a (Sun Fixed) [i = 1 + zs/zr]",
+            "\u30ad\u30e3\u30ea\u30a2\u56fa\u5b9a (Carrier Fixed) [i = -zr/zs]"
+        ]);
+        ddPlanetaryMode.selection = 0;
+
+        var rowPlanetaryTop = grpPlanetary.add("group");
+        rowPlanetaryTop.orientation = "row";
+        rowPlanetaryTop.alignChildren = ["left", "center"];
+        rowPlanetaryTop.spacing = 10;
+        rowPlanetaryTop.add("statictext", undefined, "\u592a\u967d (zs):");
+        var etPlanetaryZs = rowPlanetaryTop.add("edittext", undefined, "18");
+        etPlanetaryZs.characters = 4;
+        rowPlanetaryTop.add("statictext", undefined, "\u904a\u661f (zp):");
+        var etPlanetaryZp = rowPlanetaryTop.add("edittext", undefined, "18");
+        etPlanetaryZp.characters = 4;
+        rowPlanetaryTop.add("statictext", undefined, "\u5185\u6b6f (zr):");
+        var etPlanetaryZr = rowPlanetaryTop.add("edittext", undefined, "54");
+        etPlanetaryZr.characters = 4;
+        rowPlanetaryTop.add("statictext", undefined, "\u904a\u661f\u6570 (N):");
+        var etPlanetaryN = rowPlanetaryTop.add("edittext", undefined, "3");
+        etPlanetaryN.characters = 3;
+
+        var rowPlanetarySolve = grpPlanetary.add("group");
+        rowPlanetarySolve.orientation = "row";
+        rowPlanetarySolve.alignChildren = ["left", "center"];
+        rowPlanetarySolve.spacing = 6;
+        rowPlanetarySolve.add("statictext", undefined, "\u76ee\u6a19\u6bd4 i:");
+        var etPlanetaryTargetRatio = rowPlanetarySolve.add("edittext", undefined, "4.0");
+        etPlanetaryTargetRatio.characters = 4;
+        var btnPlanetarySolve = rowPlanetarySolve.add("button", undefined, "\u5019\u88dc\u691c\u7d22");
+        var btnPlanetaryClear = rowPlanetarySolve.add("button", undefined, "\u30af\u30ea\u30a2");
+        var ddPlanetaryCandidates = rowPlanetarySolve.add("dropdownlist", undefined, ["(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)"]);
+        ddPlanetaryCandidates.selection = 0;
+        var btnPlanetaryExpand = rowPlanetarySolve.add("button", undefined, "\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u3078\u5c55\u958b (Expand to Train)");
+
+
+        // --- View 3: 3K Paradoxical Planetary ---
+        var grpParadox = pnlConfig.add("group");
+        grpParadox.orientation = "column";
+        grpParadox.alignment = ["fill", "top"];
+        grpParadox.alignChildren = ["fill", "top"];
+        grpParadox.spacing = 6;
+
+        var rowParadoxTop = grpParadox.add("group");
+        rowParadoxTop.orientation = "row";
+        rowParadoxTop.alignChildren = ["left", "center"];
+        rowParadoxTop.spacing = 8;
+        rowParadoxTop.add("statictext", undefined, "\u592a\u967d (zs):");
+        var etParadoxZs = rowParadoxTop.add("edittext", undefined, "24");
+        etParadoxZs.characters = 4;
+        rowParadoxTop.add("statictext", undefined, "\u904a\u661f (zp):");
+        var etParadoxZp = rowParadoxTop.add("edittext", undefined, "18");
+        etParadoxZp.characters = 4;
+        rowParadoxTop.add("statictext", undefined, "\u56fa\u5b9a (zr1):");
+        var etParadoxZr1 = rowParadoxTop.add("edittext", undefined, "60");
+        etParadoxZr1.characters = 4;
+        rowParadoxTop.add("statictext", undefined, "\u51fa\u529b (zr2):");
+        var etParadoxZr2 = rowParadoxTop.add("edittext", undefined, "57");
+        etParadoxZr2.characters = 4;
+        rowParadoxTop.add("statictext", undefined, "\u904a\u661f\u6570 (N):");
+        var etParadoxN = rowParadoxTop.add("edittext", undefined, "3");
+        etParadoxN.characters = 3;
+
+        var rowParadoxSolve = grpParadox.add("group");
+        rowParadoxSolve.orientation = "row";
+        rowParadoxSolve.alignChildren = ["left", "center"];
+        rowParadoxSolve.spacing = 6;
+        rowParadoxSolve.add("statictext", undefined, "\u76ee\u6a19\u6bd4 i:");
+        var etParadoxTargetRatio = rowParadoxSolve.add("edittext", undefined, "-50.0");
+        etParadoxTargetRatio.characters = 5;
+        var btnParadoxSolve = rowParadoxSolve.add("button", undefined, "\u5019\u88dc\u691c\u7d22");
+        var btnParadoxClear = rowParadoxSolve.add("button", undefined, "\u30af\u30ea\u30a2");
+        var ddParadoxCandidates = rowParadoxSolve.add("dropdownlist", undefined, ["(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)"]);
+        ddParadoxCandidates.selection = 0;
+        var btnParadoxExpand = rowParadoxSolve.add("button", undefined, "\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u3078\u5c55\u958b (Expand to Train)");
+
+
+        // 4. Gear Creation Options Panel (6 Specific User Options)
+        var pnlCreationOptions = tabCreate.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3 (Creation Options)");
+        pnlCreationOptions.orientation = "column";
+        pnlCreationOptions.alignChildren = ["fill", "top"];
+        pnlCreationOptions.spacing = 4;
+        pnlCreationOptions.margins = 6;
+
+        var rowOpt1 = pnlCreationOptions.add("group");
+        rowOpt1.orientation = "row";
+        rowOpt1.spacing = 15;
+        var chkCompound = rowOpt1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
+        chkCompound.value = chkDefCompound.value;
+        var chkPitchSameLayer = rowOpt1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
+        chkPitchSameLayer.value = chkDefPitchSameLayer.value;
+        var chkCenterSameGroup = rowOpt1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
+        chkCenterSameGroup.value = chkDefCenterSameGroup.value;
+        var chkIndividualTeeth = rowOpt1.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
+        chkIndividualTeeth.value = chkDefIndividualTeeth.value;
+
+        var rowOpt2 = pnlCreationOptions.add("group");
+        rowOpt2.orientation = "row";
+        rowOpt2.spacing = 15;
+        var chkText = rowOpt2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
+        chkText.value = chkDefDrawLabel.value;
+        var rbSkelSingleLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        rbSkelSingleLayer.value = rbDefSkelSingle.value;
+        var rbSkelPerStageLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        rbSkelPerStageLayer.value = rbDefSkelPerStage.value;
+
+        var chkRecordLogThis = rowOpt2.add("checkbox", undefined, "\u8a08\u7b97\u904e\u7a0b\u3092TXT\u30ed\u30b0\u4fdd\u5b58");
+        chkRecordLogThis.value = chkAutoRecordLog.value;
+
+        // 5. Placement & Origin Panel (Renamed G1 to Root Gear Center)
+        var pnlPlacement = tabCreate.add("panel", undefined, "\u4f5c\u6210\u4f4d\u7f6e (Placement & Origin)");
+        pnlPlacement.orientation = "row";
+        pnlPlacement.alignChildren = ["left", "center"];
+        pnlPlacement.spacing = 8;
+        pnlPlacement.margins = 6;
+
+        pnlPlacement.add("statictext", undefined, "\u57fa\u6e96\u70b9:");
+        var ddPlacementRef = pnlPlacement.add("dropdownlist", undefined, [
+            "\u7b2c1\u30ae\u30a2(\u30eb\u30fc\u30c8)\u306e\u57fa\u6e96\u5186\u4e2d\u5fc3",
+            "\u8f2a\u5217\u5168\u4f53\u306e\u4e2d\u5fc3 (Train BBox Center)",
+            "\u30a2\u30fc\u30c8\u30dc\u30fc\u30c9\u4e2d\u592e (Artboard Center)",
+            "\u9078\u629e\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u4f4d\u7f6e (Selection Center)"
+        ]);
+        ddPlacementRef.selection = 0;
+
+        pnlPlacement.add("statictext", undefined, "X:");
+        var etTargetX = pnlPlacement.add("edittext", undefined, "0.0");
+        etTargetX.characters = 6;
+        pnlPlacement.add("statictext", undefined, "mm");
+
+        pnlPlacement.add("statictext", undefined, "Y:");
+        var etTargetY = pnlPlacement.add("edittext", undefined, "0.0");
+        etTargetY.characters = 6;
+        pnlPlacement.add("statictext", undefined, "mm");
+
+        var btnUpdatePlacementCoords = pnlPlacement.add("button", undefined, "\u5ea7\u6a19\u66f4\u65b0");
+
+        function updatePlacementRefLabel() {
+            var rootNode = (trainNodes && trainNodes.length > 0) ? trainNodes[0] : null;
+            if (trainNodes) {
+                for (var i = 0; i < trainNodes.length; i++) {
+                    if (!trainNodes[i].parentId || trainNodes[i].relationType === "ROOT") {
+                        rootNode = trainNodes[i];
+                        break;
+                    }
+                }
+            }
+            var rootId = rootNode ? rootNode.id : "G1";
+            if (ddPlacementRef && ddPlacementRef.items && ddPlacementRef.items.length > 0) {
+                ddPlacementRef.items[0].text = "ルートギア (" + rootId + ") の中心";
+            }
+        }
+
+        function parseTrainCSV(text) {
+            if (!text || typeof text !== "string") return { success: false, error: "Empty or invalid text" };
+
+            var lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+            var validLines = [];
+            for (var l = 0; l < lines.length; l++) {
+                var trimmed = lines[l].replace(/^\s+|\s+$/g, "");
+                if (trimmed.length > 0 && trimmed.charAt(0) !== "#") {
+                    validLines.push(trimmed);
+                }
+            }
+            if (validLines.length === 0) return { success: false, error: "No data rows found" };
+
+            var firstLine = validLines[0];
+            var delimiter = (firstLine.indexOf("\t") !== -1) ? "\t" : ",";
+
+            function splitLine(line) {
+                var tokens = line.split(delimiter);
+                for (var t = 0; t < tokens.length; t++) {
+                    tokens[t] = tokens[t].replace(/^\s+|\s+$/g, "").replace(/^["']|["']$/g, "");
+                }
+                return tokens;
+            }
+
+            var headerTokens = splitLine(firstLine);
+            var hasHeader = false;
+            var colMap = { id: -1, parent: -1, z: -1, m: -1, alpha: -1, angle: -1, type: -1, shaftType: -1, shaftDia: -1, stage: -1, x: -1 };
+
+            for (var h = 0; h < headerTokens.length; h++) {
+                var key = headerTokens[h].toLowerCase();
+                if (key === "id" || key === "gearid" || key === "ギアid") { colMap.id = h; hasHeader = true; }
+                else if (key === "parent" || key === "parentid" || key === "親" || key === "親id") { colMap.parent = h; hasHeader = true; }
+                else if (key === "z" || key === "teeth" || key === "歯数") { colMap.z = h; hasHeader = true; }
+                else if (key === "m" || key === "module" || key === "モジュール") { colMap.m = h; hasHeader = true; }
+                else if (key === "alpha" || key === "alphadeg" || key === "圧力角") { colMap.alpha = h; hasHeader = true; }
+                else if (key === "angle" || key === "angledeg" || key === "relativeangle" || key === "配置角度") { colMap.angle = h; hasHeader = true; }
+                else if (key === "type" || key === "geartype" || key === "種別") { colMap.type = h; hasHeader = true; }
+                else if (key === "shafttype" || key === "軸穴形状") { colMap.shaftType = h; hasHeader = true; }
+                else if (key === "shaftdia" || key === "shaftdiameter" || key === "shaft" || key === "軸穴径") { colMap.shaftDia = h; hasHeader = true; }
+                else if (key === "stage" || key === "stageindex" || key === "段" || key === "段番号") { colMap.stage = h; hasHeader = true; }
+                else if (key === "x" || key === "shift" || key === "転位係数") { colMap.x = h; hasHeader = true; }
+            }
+
+            var startRow = hasHeader ? 1 : 0;
+            if (!hasHeader) {
+                colMap = { id: 0, parent: 1, z: 2, angle: 3, m: 4, alpha: 5, shaftType: 6, shaftDia: 7, stage: 8, type: 9 };
+            }
+
+            var importedNodes = [];
+            var usedIds = {};
+
+            for (var r = startRow; r < validLines.length; r++) {
+                var row = splitLine(validLines[r]);
+                if (row.length === 0 || (row.length === 1 && row[0] === "")) continue;
+
+                var rawId = (colMap.id !== -1 && row[colMap.id]) ? row[colMap.id] : ("G" + (importedNodes.length + 1));
+                var cleanId = sanitizeId(rawId);
+                if (!cleanId) cleanId = "G" + (importedNodes.length + 1);
+
+                if (usedIds[cleanId]) {
+                    var counter = 2;
+                    while (usedIds[cleanId + "_" + counter]) counter++;
+                    cleanId = cleanId + "_" + counter;
+                }
+                usedIds[cleanId] = true;
+
+                var rawParent = (colMap.parent !== -1 && row[colMap.parent]) ? row[colMap.parent] : "";
+                var parentId = (rawParent && rawParent !== "-" && rawParent !== "none" && rawParent !== "null") ? sanitizeId(rawParent) : null;
+
+                var zVal = (colMap.z !== -1 && row[colMap.z]) ? (parseInt(row[colMap.z], 10) || 18) : 18;
+                var mVal = (colMap.m !== -1 && row[colMap.m]) ? (parseFloat(row[colMap.m]) || 2.0) : 2.0;
+                var aVal = (colMap.alpha !== -1 && row[colMap.alpha]) ? (parseFloat(row[colMap.alpha]) || 20.0) : 20.0;
+                var angVal = (colMap.angle !== -1 && row[colMap.angle]) ? (parseFloat(row[colMap.angle]) || 0.0) : 0.0;
+                var stageVal = (colMap.stage !== -1 && row[colMap.stage]) ? (parseInt(row[colMap.stage], 10) || 1) : 1;
+                var xVal = (colMap.x !== -1 && row[colMap.x]) ? (parseFloat(row[colMap.x]) || 0.0) : 0.0;
+
+                var rawType = (colMap.type !== -1 && row[colMap.type]) ? row[colMap.type].toUpperCase() : "SPUR";
+                var gearType = "SPUR";
+                if (rawType.indexOf("INT") !== -1 || rawType.indexOf("内歯") !== -1) gearType = "INTERNAL";
+                else if (rawType.indexOf("RACK") !== -1 || rawType.indexOf("ラック") !== -1) gearType = "RACK";
+
+                var rawShaftType = (colMap.shaftType !== -1 && row[colMap.shaftType]) ? row[colMap.shaftType] : "丸穴";
+                var shaftType = "丸穴";
+                var sLower = rawShaftType.toLowerCase();
+                if (sLower.indexOf("d") !== -1) shaftType = "Dカット";
+                else if (sLower.indexOf("key") !== -1 || sLower.indexOf("キー") !== -1) shaftType = "キー溝";
+                else if (sLower.indexOf("none") !== -1 || sLower.indexOf("なし") !== -1) shaftType = "なし";
+
+                var shaftDia = (colMap.shaftDia !== -1 && row[colMap.shaftDia]) ? (parseFloat(row[colMap.shaftDia]) || 5.0) : 5.0;
+                if (gearType === "RACK" || gearType === "INTERNAL") {
+                    shaftType = "なし";
+                    shaftDia = 0.0;
+                }
+
+                var relType = (!parentId || importedNodes.length === 0) ? "ROOT" : "MESHING";
+                if (parentId && (rawType.indexOf("COAX") !== -1 || rawType.indexOf("同軸") !== -1)) {
+                    relType = "COAXIAL";
+                }
+
+                importedNodes.push({
+                    id: cleanId,
+                    kind: gearType,
+                    gearType: gearType,
+                    parentId: parentId,
+                    relationType: relType,
+                    z: zVal,
+                    m: mVal,
+                    alphaDeg: aVal,
+                    angleDeg: angVal,
+                    relativeAngleDeg: angVal,
+                    stageIndex: stageVal,
+                    layerIndex: stageVal,
+                    shaftType: shaftType,
+                    shaftDiameter: shaftDia,
+                    x: xVal,
+                    backHeight: 5.0,
+                    rimThickness: 6.0,
+                    rimDiameter: (mVal * zVal) + 12.0
+                });
+            }
+
+            if (importedNodes.length > 0) {
+                importedNodes[0].parentId = null;
+                importedNodes[0].relationType = "ROOT";
+            }
+
+            return {
+                success: true,
+                nodes: importedNodes,
+                rowCount: importedNodes.length
+            };
+        }
+
+        function syncPlacementEnabled() {
+            var useOrigCirclePos = (selectedCircles.length > 0 && rbCircleOrigPos.value);
+            etTargetX.enabled = !useOrigCirclePos;
+            etTargetY.enabled = !useOrigCirclePos;
+            ddPlacementRef.enabled = !useOrigCirclePos;
+            btnUpdatePlacementCoords.enabled = !useOrigCirclePos;
+        }
+
+        // 6. Calculation Results Panel
+        var pnlCalc = tabCreate.add("panel", undefined, "\u8a08\u7b97\u7d50\u679c\u30fb\u5e72\u6e09\u30d7\u30ec\u30d3\u30e5\u30fc");
+        pnlCalc.orientation = "row";
+        pnlCalc.alignChildren = ["fill", "center"];
+        pnlCalc.spacing = 15;
+        pnlCalc.margins = 6;
+
+        var lblCalcSummary = pnlCalc.add("statictext", undefined, "\u6b6f\u8eca\u8af8\u5143\u3092\u8a08\u7b97\u4e2d...");
+        lblCalcSummary.characters = 65;
+
+        tabMain.selection = tabCreate;
+
+        // ==========================================
+        // Train Nodes State Management (Protected & Synchronized)
+        // ==========================================
+        var isUpdatingFields = false; // Re-entrancy protection guard for ScriptUI events
+
+        function sanitizeId(rawId) {
+            if (!rawId) return "";
+            var s = String(rawId);
+            var clean = "";
+            for (var i = 0; i < s.length; i++) {
+                var c = s.charCodeAt(i);
+                if (c > 32 && c !== 34 && c !== 42 && c !== 47 && c !== 58 && c !== 60 && c !== 62 && c !== 63 && c !== 92 && c !== 124) {
+                    clean += s.charAt(i);
+                }
+            }
+            return clean;
+        }
+
+        var trainNodes = [
+            {
+                id: "G1",
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 18,
+                m: 2.0,
+                alphaDeg: 20.0,
+                shaftDiameter: 5.0,
+                shaftType: "丸穴",
+                parentId: null,
+                relationType: "ROOT",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: 1,
+                layerIndex: 1,
+                x: 0
+            },
+            {
+                id: "G2",
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 36,
+                m: 2.0,
+                alphaDeg: 20.0,
+                shaftDiameter: 5.0,
+                shaftType: "丸穴",
+                parentId: "G1",
+                relationType: "MESHING",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: 1,
+                layerIndex: 1,
+                x: 0
+            }
+        ];
+
+        function resolveNodeStage(nd) {
+            if (nd.stageIndex !== undefined && nd.stageIndex !== null && !isNaN(nd.stageIndex) && nd.stageIndex > 0) {
+                return parseInt(nd.stageIndex, 10);
+            }
+            if (nd.layerIndex !== undefined && nd.layerIndex !== null && !isNaN(nd.layerIndex) && nd.layerIndex > 0) {
+                return parseInt(nd.layerIndex, 10);
+            }
+            if (nd.origCircle && nd.origCircle.stageIndex) {
+                return parseInt(nd.origCircle.stageIndex, 10);
+            }
+            return 1;
+        }
+
+        function syncNodeProperties(nd) {
+            if (!nd) return;
+            nd.gearType = (nd.kind === "INTERNAL") ? "INTERNAL" : ((nd.kind === "RACK") ? "RACK" : "SPUR");
+            nd.kind = nd.gearType;
+            nd.z = parseInt(nd.z, 10) || ((nd.gearType === "RACK") ? 24 : 18);
+            nd.isMutilated = (nd.gearType === "SPUR") ? !!(nd.isMutilated || nd.mutilated) : false;
+            nd.activeTeeth = (nd.activeTeeth !== undefined && nd.activeTeeth !== null && !isNaN(nd.activeTeeth)) ? parseInt(nd.activeTeeth, 10) : nd.z;
+            nd.startTooth = (nd.startTooth !== undefined && nd.startTooth !== null && !isNaN(nd.startTooth)) ? parseInt(nd.startTooth, 10) : 1;
+            nd.blankRadiusType = nd.blankRadiusType || "root";
+            nd.m = (nd.m !== undefined && nd.m !== null && !isNaN(nd.m)) ? parseFloat(nd.m) : (parseFloat(etModule.text) || 2.0);
+            nd.alphaDeg = (nd.alphaDeg !== undefined && nd.alphaDeg !== null && !isNaN(nd.alphaDeg)) ? parseFloat(nd.alphaDeg) : (parseFloat(etAlpha.text) || 20.0);
+            nd.backlash = (nd.backlash !== undefined && nd.backlash !== null && !isNaN(nd.backlash)) ? parseFloat(nd.backlash) : (parseFloat(etBacklash.text) || 0.15);
+            nd.x = (nd.x !== undefined && nd.x !== null && !isNaN(nd.x)) ? parseFloat(nd.x) : 0.0;
+            
+            var relAngle = (nd.relativeAngleDeg !== undefined && !isNaN(nd.relativeAngleDeg)) ? parseFloat(nd.relativeAngleDeg) : (parseFloat(nd.angleDeg) || 0.0);
+            nd.angleDeg = relAngle;
+            nd.relativeAngleDeg = relAngle;
+
+            var stIdx = resolveNodeStage(nd);
+            nd.stageIndex = stIdx;
+            nd.layerIndex = stIdx;
+
+            if (nd.gearType === "RACK") {
+                var bHeight = (nd.backBarHeight !== undefined && !isNaN(nd.backBarHeight)) ? parseFloat(nd.backBarHeight) : (parseFloat(nd.backHeight) || 5.0);
+                nd.backHeight = bHeight;
+                nd.backBarHeight = bHeight;
+                nd.rackHeight = bHeight;
+                nd.shaftDiameter = 0.0;
+                nd.shaftType = "なし";
+            } else if (nd.gearType === "INTERNAL") {
+                var rThick = (nd.rimThickness !== undefined && !isNaN(nd.rimThickness)) ? parseFloat(nd.rimThickness) : 6.0;
+                nd.rimThickness = rThick;
+                nd.backHeight = rThick;
+                nd.rimDiameter = (nd.m * (nd.z - 2.5)) + 2.0 * rThick;
+                nd.shaftDiameter = 0.0;
+                nd.shaftType = "なし";
+            } else {
+                nd.shaftDiameter = (nd.shaftDiameter !== undefined && !isNaN(nd.shaftDiameter)) ? parseFloat(nd.shaftDiameter) : 5.0;
+                nd.shaftType = nd.shaftType || "丸穴";
+            }
+        }
+
+        function setSubItem(it, sIdx, val) {
+            if (!it.subItems) it.subItems = [];
+            while (it.subItems.length <= sIdx) {
+                it.subItems.push({ text: "" });
+            }
+            if (!it.subItems[sIdx]) it.subItems[sIdx] = { text: "" };
+            it.subItems[sIdx].text = String(val);
+        }
+
+        function getNodeDisplayStrings(nd) {
+            syncNodeProperties(nd);
+
+            // Find parent node
+            var pNode = null;
+            if (nd.parentId) {
+                for (var p = 0; p < trainNodes.length; p++) {
+                    if (trainNodes[p].id === nd.parentId) { pNode = trainNodes[p]; break; }
+                }
+            }
+
+            // Reduction ratio i
+            var iStr = "-";
+            if (!nd.parentId || nd.relationType === "ROOT") {
+                iStr = "- (基準)";
+            } else if (nd.relationType === "COAXIAL") {
+                iStr = "1.00 (同軸)";
+            } else if (pNode && pNode.z && nd.z) {
+                var rVal = (nd.z / pNode.z);
+                iStr = "i=" + rVal.toFixed(2);
+            }
+
+            // Outer diameter / rim thickness column
+            var sizeStr = "-";
+            if (nd.gearType === "SPUR") {
+                var daVal = (nd.gearData && nd.gearData.da) ? nd.gearData.da : (nd.m * (nd.z + 2));
+                sizeStr = "da: " + daVal.toFixed(1) + "mm";
+            } else if (nd.gearType === "INTERNAL") {
+                var dfVal = (nd.gearData && nd.gearData.df) ? nd.gearData.df : (nd.m * (nd.z + 2.5));
+                sizeStr = "df: " + dfVal.toFixed(1) + " / リム: " + nd.rimThickness.toFixed(1) + "mm";
+            } else if (nd.gearType === "RACK") {
+                var thVal = (nd.gearData && nd.gearData.totalHeightMm) ? nd.gearData.totalHeightMm : (nd.m * 4.75);
+                sizeStr = "全高: " + thVal.toFixed(1) + "mm";
+            }
+
+            var teethStr = (nd.gearType === "RACK") ? ("L" + nd.z) : ("z" + nd.z);
+            if (nd.gearType === "SPUR" && nd.isMutilated && nd.activeTeeth < nd.z) {
+                teethStr += " (\u6709\u52b9" + nd.activeTeeth + ")";
+            }
+
+            return {
+                id: nd.id,
+                kind: nd.gearType,
+                stage: "L" + nd.stageIndex,
+                parent: nd.parentId ? nd.parentId : "-",
+                relation: nd.relationType === "COAXIAL" ? "同軸" : (nd.relationType === "ROOT" ? "ルート" : "噛合"),
+                teeth: teethStr,
+                ratio: iStr,
+                size: sizeStr,
+                m: String(nd.m),
+                alpha: String(nd.alphaDeg) + "°",
+                shaft: (nd.gearType === "RACK") ? "-" : (nd.shaftDiameter + "mm (" + nd.shaftType + ")"),
+                angle: (nd.relationType === "COAXIAL") ? "-" : (nd.relativeAngleDeg + "°"),
+                status: nd.status || "正常"
+            };
+        }
+
+        function updateListItemRow(item, nd) {
+            if (!item || !nd) return;
+            var disp = getNodeDisplayStrings(nd);
+            item.text = disp.id;
+            setSubItem(item, 0, disp.kind);
+            setSubItem(item, 1, disp.stage);
+            setSubItem(item, 2, disp.parent);
+            setSubItem(item, 3, disp.relation);
+            setSubItem(item, 4, disp.teeth);
+            setSubItem(item, 5, disp.ratio);
+            setSubItem(item, 6, disp.size);
+            setSubItem(item, 7, disp.m);
+            setSubItem(item, 8, disp.alpha);
+            setSubItem(item, 9, disp.shaft);
+            setSubItem(item, 10, disp.angle);
+            setSubItem(item, 11, disp.status);
+        }
+
+        function updateCurrentSelectedRowOnly() {
+            if (!trainListBox.selection) return;
+            var idx = trainListBox.selection.index;
+            var nd = trainNodes[idx];
+            if (!nd) return;
+            updateListItemRow(trainListBox.selection, nd);
+        }
+
+        function refreshTrainList(selectedId) {
+            var prevLock = isUpdatingFields;
+            isUpdatingFields = true;
+            try {
+                trainListBox.removeAll();
+                for (var i = 0; i < trainNodes.length; i++) {
+                    var nd = trainNodes[i];
+                    var item = trainListBox.add("item", nd.id);
+                    updateListItemRow(item, nd);
+                }
+
+                var selIdx = 0;
+                if (selectedId) {
+                    for (var s = 0; s < trainNodes.length; s++) {
+                        if (trainNodes[s].id === selectedId) { selIdx = s; break; }
+                    }
+                }
+                if (trainListBox.items.length > 0) {
+                    trainListBox.selection = selIdx;
+                }
+                loadSelectedNodeToFields();
+            } finally {
+                isUpdatingFields = prevLock;
+            }
+            updatePlacementRefLabel();
+        }
+
+        function loadSelectedNodeToFields() {
+            if (!trainListBox.selection) return;
+            var idx = trainListBox.selection.index;
+            var nd = trainNodes[idx];
+            if (!nd) return;
+
+            var prevLock = isUpdatingFields;
+            isUpdatingFields = true;
+            try {
+                syncNodeProperties(nd);
+
+                etNodeId.text = nd.id;
+                lblIdStatus.text = "";
+
+                ddNodeKind.selection = (nd.gearType === "INTERNAL") ? 1 : ((nd.gearType === "RACK") ? 2 : 0);
+                etNodeZ.text = String(nd.z);
+                lblNodeZ.text = (nd.gearType === "RACK") ? " 歯数/長さ:" : " 歯数:";
+
+                // Rebuild parent list EXCLUDING the node itself
+                ddNodeParent.removeAll();
+                ddNodeParent.add("item", "(なし / ルート)");
+                var parentItemIdx = 0;
+                var currentPIndex = 1;
+                for (var p = 0; p < trainNodes.length; p++) {
+                    if (trainNodes[p].id !== nd.id) {
+                        ddNodeParent.add("item", trainNodes[p].id);
+                        if (nd.parentId && trainNodes[p].id === nd.parentId) {
+                            parentItemIdx = currentPIndex;
+                        }
+                        currentPIndex++;
+                    }
+                }
+                ddNodeParent.selection = parentItemIdx;
+
+                ddNodeRelation.selection = (nd.relationType === "COAXIAL") ? 1 : 0;
+                etNodeAngle.text = String(nd.relativeAngleDeg);
+
+                etNodeShaft.text = String(nd.shaftDiameter);
+                var shType = nd.shaftType || "丸穴";
+                if (shType === "Dカット") ddNodeShaftType.selection = 1;
+                else if (shType === "キー湍") ddNodeShaftType.selection = 2;
+                else if (shType === "なし") ddNodeShaftType.selection = 3;
+                else ddNodeShaftType.selection = 0;
+
+                etNodeBackHeight.text = String(nd.gearType === "RACK" ? nd.backBarHeight : nd.rimThickness);
+                lblNodeBackHeight.text = (nd.gearType === "RACK") ? " 背面高さ:" : " リム厚み:";
+
+                etNodeShift.text = String(nd.x);
+                etNodeStage.text = String(nd.stageIndex);
+                etNodeModule.text = String(nd.m);
+                etNodeAlpha.text = String(nd.alphaDeg);
+                etNodeBacklash.text = String(nd.backlash);
+
+                chkNodeMutilated.value = !!nd.isMutilated;
+                etActiveTeeth.text = String(nd.activeTeeth !== undefined ? nd.activeTeeth : nd.z);
+                etStartTooth.text = String(nd.startTooth !== undefined ? nd.startTooth : 1);
+                if (nd.blankRadiusType === "pitch") ddBlankRadius.selection = 1;
+                else if (nd.blankRadiusType === "tip") ddBlankRadius.selection = 2;
+                else ddBlankRadius.selection = 0;
+
+                var isSpur = (nd.gearType === "SPUR");
+                chkNodeMutilated.enabled = isSpur;
+                var enableMut = isSpur && chkNodeMutilated.value;
+                etActiveTeeth.enabled = enableMut;
+                etStartTooth.enabled = enableMut;
+                ddBlankRadius.enabled = enableMut;
+
+                if (!nd.parentId || nd.relationType === "ROOT") {
+                    ddNodeRelation.enabled = false;
+                    etNodeAngle.enabled = false;
+                } else {
+                    ddNodeRelation.enabled = true;
+                    etNodeAngle.enabled = (nd.relationType === "MESHING");
+                }
+            } finally {
+                isUpdatingFields = prevLock;
+            }
+            updatePlacementRefLabel();
+        }
+
+        function saveFieldsToCurrentNode() {
+            if (!trainListBox.selection) return;
+            var idx = trainListBox.selection.index;
+            var nd = trainNodes[idx];
+            if (!nd) return;
+
+            var kinds = ["SPUR", "INTERNAL", "RACK"];
+            nd.gearType = kinds[ddNodeKind.selection ? ddNodeKind.selection.index : 0];
+            nd.kind = nd.gearType;
+
+            nd.z = parseInt(etNodeZ.text, 10) || ((nd.gearType === "RACK") ? 24 : 18);
+
+            if (ddNodeParent.selection && ddNodeParent.selection.index > 0) {
+                nd.parentId = ddNodeParent.selection.text;
+                nd.relationType = (ddNodeRelation.selection && ddNodeRelation.selection.index === 1) ? "COAXIAL" : "MESHING";
+            } else {
+                nd.parentId = null;
+                nd.relationType = "ROOT";
+            }
+
+            var ang = parseFloat(etNodeAngle.text) || 0.0;
+            nd.angleDeg = ang;
+            nd.relativeAngleDeg = ang;
+
+            nd.shaftDiameter = parseFloat(etNodeShaft.text) || 0.0;
+            nd.shaftType = ddNodeShaftType.selection ? ddNodeShaftType.selection.text : "丸穴";
+
+            var bVal = parseFloat(etNodeBackHeight.text) || ((nd.gearType === "RACK") ? 5.0 : 6.0);
+            nd.backHeight = bVal;
+            nd.backBarHeight = bVal;
+            nd.rackHeight = bVal;
+            nd.rimThickness = bVal;
+
+            nd.x = parseFloat(etNodeShift.text) || 0.0;
+            nd.stageIndex = parseInt(etNodeStage.text, 10) || 1;
+            nd.layerIndex = nd.stageIndex;
+            nd.m = parseFloat(etNodeModule.text) || 2.0;
+            nd.alphaDeg = parseFloat(etNodeAlpha.text) || 20.0;
+            nd.backlash = parseFloat(etNodeBacklash.text) || 0.15;
+
+            nd.isMutilated = (nd.gearType === "SPUR") ? chkNodeMutilated.value : false;
+            nd.activeTeeth = parseInt(etActiveTeeth.text, 10) || nd.z;
+            nd.startTooth = parseInt(etStartTooth.text, 10) || 1;
+            var bTypes = ["root", "pitch", "tip"];
+            nd.blankRadiusType = bTypes[ddBlankRadius.selection ? ddBlankRadius.selection.index : 0];
+
+            syncNodeProperties(nd);
+        }
+
+        trainListBox.onChange = function () {
+            if (isUpdatingFields) return;
+            loadSelectedNodeToFields();
+        };
+
+        function onFieldInputChanged() {
+            if (isUpdatingFields) return;
+            var prevLock = isUpdatingFields;
+            isUpdatingFields = true;
+            try {
+                saveFieldsToCurrentNode();
+                updateCurrentSelectedRowOnly();
+                updatePreview();
+            } finally {
+                isUpdatingFields = prevLock;
+            }
+            updatePlacementRefLabel();
+        }
+
+        // Attach field change listeners
+        etNodeZ.onChanging = onFieldInputChanged;
+        etNodeZ.onChange = onFieldInputChanged;
+        ddNodeKind.onChange = function () {
+            var isSpur = (ddNodeKind.selection && ddNodeKind.selection.index === 0);
+            chkNodeMutilated.enabled = isSpur;
+            var enableMut = isSpur && chkNodeMutilated.value;
+            etActiveTeeth.enabled = enableMut;
+            etStartTooth.enabled = enableMut;
+            ddBlankRadius.enabled = enableMut;
+            onFieldInputChanged();
+        };
+
+        chkNodeMutilated.onClick = function () {
+            var isSpur = (ddNodeKind.selection && ddNodeKind.selection.index === 0);
+            var enableMut = isSpur && chkNodeMutilated.value;
+            etActiveTeeth.enabled = enableMut;
+            etStartTooth.enabled = enableMut;
+            ddBlankRadius.enabled = enableMut;
+            onFieldInputChanged();
+        };
+
+        etActiveTeeth.onChanging = onFieldInputChanged;
+        etActiveTeeth.onChange = onFieldInputChanged;
+        etStartTooth.onChanging = onFieldInputChanged;
+        etStartTooth.onChange = onFieldInputChanged;
+        ddBlankRadius.onChange = onFieldInputChanged;
+        ddNodeParent.onChange = function () {
+            if (isUpdatingFields) return;
+            var prevLock = isUpdatingFields;
+            isUpdatingFields = true;
+            try {
+                saveFieldsToCurrentNode();
+                updateCurrentSelectedRowOnly();
+                if (!ddNodeParent.selection || ddNodeParent.selection.index === 0) {
+                    ddNodeRelation.enabled = false;
+                    etNodeAngle.enabled = false;
+                } else {
+                    ddNodeRelation.enabled = true;
+                    etNodeAngle.enabled = (ddNodeRelation.selection && ddNodeRelation.selection.index === 0);
+                }
+                updatePreview();
+            } finally {
+                isUpdatingFields = prevLock;
+            }
+            updatePlacementRefLabel();
+        };
+        ddNodeRelation.onChange = function () {
+            if (isUpdatingFields) return;
+            var prevLock = isUpdatingFields;
+            isUpdatingFields = true;
+            try {
+                saveFieldsToCurrentNode();
+                updateCurrentSelectedRowOnly();
+                etNodeAngle.enabled = (ddNodeRelation.selection && ddNodeRelation.selection.index === 0);
+                updatePreview();
+            } finally {
+                isUpdatingFields = prevLock;
+            }
+            updatePlacementRefLabel();
+        };
+        etNodeAngle.onChanging = onFieldInputChanged;
+        etNodeAngle.onChange = onFieldInputChanged;
+        etNodeShaft.onChanging = onFieldInputChanged;
+        etNodeShaft.onChange = onFieldInputChanged;
+        ddNodeShaftType.onChange = onFieldInputChanged;
+        etNodeBackHeight.onChanging = onFieldInputChanged;
+        etNodeBackHeight.onChange = onFieldInputChanged;
+        etNodeShift.onChanging = onFieldInputChanged;
+        etNodeShift.onChange = onFieldInputChanged;
+        etNodeStage.onChanging = onFieldInputChanged;
+        etNodeStage.onChange = onFieldInputChanged;
+        etNodeModule.onChanging = onFieldInputChanged;
+        etNodeModule.onChange = onFieldInputChanged;
+        etNodeAlpha.onChanging = onFieldInputChanged;
+        etNodeAlpha.onChange = onFieldInputChanged;
+        etNodeBacklash.onChanging = onFieldInputChanged;
+        etNodeBacklash.onChange = onFieldInputChanged;
+
+        // Unique ID Change Button Handler
+        btnChangeId.onClick = function () {
+            if (!trainListBox.selection) return;
+            var idx = trainListBox.selection.index;
+            var nd = trainNodes[idx];
+            if (!nd) return;
+
+            var newId = sanitizeId(etNodeId.text);
+            if (!newId) {
+                lblIdStatus.text = "空のIDは無効です";
+                try { lblIdStatus.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [1, 0, 0, 1], 1); } catch (eG) {}
+                return;
+            }
+
+            var isDup = false;
+            for (var i = 0; i < trainNodes.length; i++) {
+                if (trainNodes[i] !== nd && trainNodes[i].id.toLowerCase() === newId.toLowerCase()) {
+                    isDup = true;
+                    break;
+                }
+            }
+
+            if (isDup) {
+                lblIdStatus.text = "IDが重複しています。";
+                try { lblIdStatus.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [1, 0, 0, 1], 1); } catch (eG) {}
+                etNodeId.text = nd.id;
+            } else {
+                var oldId = nd.id;
+                nd.id = newId;
+                for (var j = 0; j < trainNodes.length; j++) {
+                    if (trainNodes[j].parentId === oldId) {
+                        trainNodes[j].parentId = newId;
+                    }
+                }
+                lblIdStatus.text = "IDを変更しました";
+                try { lblIdStatus.graphics.foregroundColor = win.graphics.newPen(win.graphics.PenType.SOLID_COLOR, [0, 0.6, 0, 1], 1); } catch (eG) {}
+                refreshTrainList(newId);
+                updatePreview();
+            }
+        };
+
+        btnAddSpur.onClick = function () {
+            var newIdx = trainNodes.length + 1;
+            var lastNode = trainNodes[trainNodes.length - 1];
+            var newId = "G" + newIdx;
+            var newNode = {
+                id: newId,
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 24,
+                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                shaftDiameter: 5.0,
+                shaftType: "丸穴",
+                parentId: lastNode ? lastNode.id : null,
+                relationType: lastNode ? "MESHING" : "ROOT",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: lastNode ? lastNode.stageIndex : 1,
+                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                x: 0
+            };
+            syncNodeProperties(newNode);
+            trainNodes.push(newNode);
+            refreshTrainList(newId);
+            updatePreview();
+        };
+
+        btnAddInternal.onClick = function () {
+            var newIdx = trainNodes.length + 1;
+            var lastNode = trainNodes[trainNodes.length - 1];
+            var newId = "I" + newIdx;
+            var newNode = {
+                id: newId,
+                kind: "INTERNAL",
+                gearType: "INTERNAL",
+                z: 48,
+                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                shaftDiameter: 0.0,
+                shaftType: "なし",
+                rimThickness: 6.0,
+                parentId: lastNode ? lastNode.id : null,
+                relationType: lastNode ? "MESHING" : "ROOT",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: lastNode ? lastNode.stageIndex : 1,
+                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                x: 0
+            };
+            syncNodeProperties(newNode);
+            trainNodes.push(newNode);
+            refreshTrainList(newId);
+            updatePreview();
+        };
+
+        btnAddRack.onClick = function () {
+            var newIdx = trainNodes.length + 1;
+            var lastNode = trainNodes[trainNodes.length - 1];
+            var newId = "R" + newIdx;
+            var newNode = {
+                id: newId,
+                kind: "RACK",
+                gearType: "RACK",
+                z: 24,
+                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                backHeight: 5.0,
+                backBarHeight: 5.0,
+                rackHeight: 5.0,
+                shaftDiameter: 0.0,
+                shaftType: "なし",
+                parentId: lastNode ? lastNode.id : null,
+                relationType: lastNode ? "MESHING" : "ROOT",
+                angleDeg: -90,
+                relativeAngleDeg: -90,
+                stageIndex: lastNode ? lastNode.stageIndex : 1,
+                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                x: 0
+            };
+            syncNodeProperties(newNode);
+            trainNodes.push(newNode);
+            refreshTrainList(newId);
+            updatePreview();
+        };
+
+        btnDeleteNode.onClick = function () {
+            if (trainNodes.length <= 1) {
+                alert("輪列には最低1つのギアが必要です。");
+                return;
+            }
+            if (!trainListBox.selection) return;
+            var delIdx = trainListBox.selection.index;
+            if (delIdx < 0 || delIdx >= trainNodes.length || !trainNodes[delIdx]) return;
+            var delId = trainNodes[delIdx].id;
+
+            for (var i = 0; i < trainNodes.length; i++) {
+                if (trainNodes[i].parentId === delId) {
+                    trainNodes[i].parentId = trainNodes[delIdx].parentId;
+                    trainNodes[i].relationType = trainNodes[delIdx].relationType;
+                }
+            }
+            trainNodes.splice(delIdx, 1);
+            var nextSelectId = trainNodes[Math.min(delIdx, trainNodes.length - 1)].id;
+            refreshTrainList(nextSelectId);
+            updatePreview();
+        };
+
+        btnImportCSV.onClick = function () {
+            try {
+                var f = File.openDialog(
+                    "輪列定義CSV/TSVファイルを選択",
+                    "CSV/TSVファイル:*.csv;*.tsv;*.txt;すべてのファイル:*.*"
+                );
+                if (!f) return;
+                f.encoding = "UTF-8";
+                if (!f.open("r")) {
+                    alert("ファイルを開けませんでした: " + f.fsName);
+                    return;
+                }
+                var content = f.read();
+                f.close();
+
+                var parsedResult = parseTrainCSV(content);
+                if (!parsedResult.success) {
+                    alert("CSVの読み込みに失敗しました:\n" + parsedResult.error);
+                    return;
+                }
+
+                if (parsedResult.nodes.length === 0) {
+                    alert("有効な歯車データが見つかりませんでした。");
+                    return;
+                }
+
+                trainNodes = parsedResult.nodes;
+                refreshTrainList(trainNodes[0].id);
+                updatePreview();
+                alert("CSV/TSVから " + trainNodes.length + " 個の歯車を正常に読み込みました。");
+            } catch (eCsv) {
+                alert("CSV読込エラー: " + eCsv.message);
+            }
+        };
+
+                // Switch Mechanism Handler
+        function switchMechanism(idx) {
+            pnlTrain.visible = (idx === 0);
+            if (typeof grpPlanetary !== "undefined" && grpPlanetary) grpPlanetary.visible = (idx === 1);
+            if (typeof grpParadox !== "undefined" && grpParadox) grpParadox.visible = (idx === 2);
+            updatePreview();
+        }
+        ddMechanism.onChange = function () {
+            switchMechanism(ddMechanism.selection ? ddMechanism.selection.index : 0);
+        };
+
+        // Rescan Circles Handler
+        btnRescan.onClick = function () {
+            doRescan();
+        };
+        rbSourceSelection.onClick = function () { doRescan(); };
+        rbSourceAllLayers.onClick = function () { doRescan(); };
+
+        function doRescan() {
+            var fromAll = rbSourceAllLayers.value;
+            selectedCircles = scanCircles(fromAll);
+            selectedCircleInfo = (selectedCircles.length > 0) ? selectedCircles[0] : null;
+
+            var txt = "";
+            if (selectedCircles.length === 0) {
+                txt = "(\u5186\u306f\u691c\u51fa\u3055\u308c\u3066\u3044\u307e\u305b\u3093)";
+                chkUseCircle.value = false;
+                chkUseCircle.enabled = false;
+                rowCircleOptions.enabled = false;
+                grpMultiCircle.enabled = false;
+                btnAutoBuildTrain.enabled = false;
+            } else if (selectedCircles.length === 1) {
+                txt = "\u691c\u51fa: 1\u500b (\u76f4\u5f84 " + selectedCircles[0].diameterMm + " mm)";
+                chkUseCircle.enabled = true;
+                rowCircleOptions.enabled = true;
+                grpMultiCircle.enabled = false;
+                btnAutoBuildTrain.enabled = false;
+            } else {
+                txt = "\u691c\u51fa: " + selectedCircles.length + "\u500b (\u8f2a\u5217\u81ea\u52d5\u69cb\u7bc9\u53ef\u80fd)";
+                chkUseCircle.enabled = true;
+                rowCircleOptions.enabled = true;
+                grpMultiCircle.enabled = true;
+                btnAutoBuildTrain.enabled = true;
+            }
+            lblCircleStatus.text = txt;
+            syncPlacementEnabled();
+        }
+
+        // Auto build train from circles button
+        btnAutoBuildTrain.onClick = function () {
+            if (selectedCircles.length < 2) return;
+            var mVal = parseFloat(etModule.text) || 2.0;
+            var alphaVal = parseFloat(etAlpha.text) || 20.0;
+            var backlashVal = parseFloat(etBacklash.text) || 0.15;
+            var tolMm = parseFloat(etTolerance.text) || 2.5;
+
+            var topology = InvoluteMath.analyzeCircleTopology(selectedCircles, {
+                m: mVal,
+                alphaDeg: alphaVal,
+                backlash: backlashVal,
+                toleranceMm: tolMm,
+                interpretation: rbCircleTip.value ? "tip" : "pitch",
+                snapMode: (ddSnapMode.selection && ddSnapMode.selection.index === 1) ? "snap_theory" : "exact_position",
+                allowCrossLayerMeshing: chkCrossLayerMesh.value
+            });
+
+            if (topology && topology.nodes && topology.nodes.length > 0) {
+                trainNodes = topology.nodes;
+                refreshTrainList(trainNodes[0].id);
+                updatePreview();
+                alert("\u5186\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u304b\u3089 " + trainNodes.length + " \u500b\u306e\u30ae\u30a2\u8f2a\u5217\u30c4\u30ea\u30fc\u3092\u69cb\u7bc9\u3057\u307e\u3057\u305f\u3002");
+            }
+        };
+
+        rbCircleOrigPos.onClick = function () { syncPlacementEnabled(); };
+        rbCircleCustomPos.onClick = function () { syncPlacementEnabled(); };
+
+        btnUpdatePlacementCoords.onClick = function () {
+            var doc = null;
+            try { if (app.documents.length > 0) doc = app.activeDocument; } catch (e) {}
+            if (!doc || !doc.artboards || doc.artboards.length === 0) return;
+            var abIdx = (typeof doc.artboards.getActiveArtboardIndex === "function") ? doc.artboards.getActiveArtboardIndex() : 0;
+            if (abIdx < 0 || abIdx >= doc.artboards.length) abIdx = 0;
+            var abRect = doc.artboards[abIdx].artboardRect;
+            if (!abRect) return;
+            var abWidthPt = abRect[2] - abRect[0];
+            var abHeightPt = abRect[1] - abRect[3];
+
+            var selIdx = ddPlacementRef.selection ? ddPlacementRef.selection.index : 0;
+            if (selIdx === 2) {
+                etTargetX.text = ((abWidthPt / 2.0) * PT_TO_MM).toFixed(2);
+                etTargetY.text = ((abHeightPt / 2.0) * PT_TO_MM).toFixed(2);
+            } else if (selIdx === 3) {
+                if (doc.selection && doc.selection.length > 0) {
+                    var sItem = doc.selection[0];
+                    var sX = sItem.left + sItem.width / 2.0;
+                    var sY = sItem.top - sItem.height / 2.0;
+                    etTargetX.text = ((sX - abRect[0]) * PT_TO_MM).toFixed(2);
+                    etTargetY.text = ((abRect[1] - sY) * PT_TO_MM).toFixed(2);
+                }
+            }
+        };
+
+        function updatePreview() {
+            var m = parseFloat(etModule.text) || 2.0;
+            var mechIdx = ddMechanism.selection ? ddMechanism.selection.index : 0;
+            if (mechIdx === 0) {
+                lblCalcSummary.text = "\u8f2a\u5217\u30ce\u30fc\u30c9: " + trainNodes.length + " \u500b | \u6a19\u6e96\u30e2\u30b8\u30e5\u30fc\u30eb: " + m;
+            } else if (mechIdx === 1) {
+                var zs = parseInt(etPlanetaryZs.text, 10);
+                var zp = parseInt(etPlanetaryZp.text, 10);
+                var zr = parseInt(etPlanetaryZr.text, 10);
+                var iVal = (zs + zr) / zs;
+                lblCalcSummary.text = "\u904a\u661f (2K-H): S:" + zs + " P:" + zp + " R:" + zr + " | \u6e1b\u901f\u6bd4 i=" + iVal.toFixed(2);
+            } else if (mechIdx === 2) {
+                var sVal = parseInt(etParadoxZs.text, 10);
+                var r1Val = parseInt(etParadoxZr1.text, 10);
+                var r2Val = parseInt(etParadoxZr2.text, 10);
+                var diffRatio = r2Val / (r2Val - r1Val);
+                lblCalcSummary.text = "\u4e0d\u601d\u8b70\u904a\u661f (3K): S:" + sVal + " R1:" + r1Val + " R2:" + r2Val + " | \u6e1b\u901f\u6bd4 i=" + diffRatio.toFixed(1);
+            }
+        }
+
+        // Solver Handlers
+        btnPlanetarySolve.onClick = function () {
+            var mode = "ring_fixed";
+            if (ddPlanetaryMode && ddPlanetaryMode.selection) {
+                if (ddPlanetaryMode.selection.index === 1) mode = "sun_fixed";
+                else if (ddPlanetaryMode.selection.index === 2) mode = "carrier_fixed";
+            }
+            var target = parseFloat(etPlanetaryTargetRatio.text);
+            var m = parseFloat(etModule.text) || 2.0;
+            var alphaDeg = parseFloat(etAlpha.text) || 20.0;
+            var N = parseInt(etPlanetaryN.text, 10);
+            var zs = parseInt(etPlanetaryZs.text, 10);
+            var zp = parseInt(etPlanetaryZp.text, 10);
+            var zr = parseInt(etPlanetaryZr.text, 10);
+
+            var specs = {
+                mode: mode,
+                targetRatio: (!isNaN(target) && target > 0) ? target : null,
+                m: m,
+                alphaDeg: alphaDeg,
+                numPlanets: (!isNaN(N) && N > 0) ? N : null,
+                fixedZs: (!isNaN(zs) && zs > 0) ? zs : null,
+                fixedZp: (!isNaN(zp) && zp > 0) ? zp : null,
+                fixedZr: (!isNaN(zr) && zr > 0) ? zr : null,
+                tol: 0.10
+            };
+
+            var list = InvoluteMath.solveStandardPlanetary(specs);
+            ddPlanetaryCandidates.removeAll();
+            if (list.length === 0) {
+                ddPlanetaryCandidates.add("item", "(\u6761\u4ef6\u306b\u5408\u81f4\u3059\u308b\u5019\u88dc\u304c\u3042\u308a\u307e\u305b\u3093)");
+                ddPlanetaryCandidates.selection = 0;
+            } else {
+                for (var i = 0; i < list.length; i++) {
+                    ddPlanetaryCandidates.add("item", list[i].label);
+                }
+                ddPlanetaryCandidates.selection = 0;
+                etPlanetaryZs.text = String(list[0].zs);
+                etPlanetaryZp.text = String(list[0].zp);
+                etPlanetaryZr.text = String(list[0].zr);
+                etPlanetaryN.text = String(list[0].numPlanets);
+                updatePreview();
+            }
+        };
+
+        btnPlanetaryClear.onClick = function () {
+            etPlanetaryZs.text = "";
+            etPlanetaryZp.text = "";
+            etPlanetaryZr.text = "";
+            etPlanetaryN.text = "";
+            etPlanetaryTargetRatio.text = "";
+            ddPlanetaryCandidates.removeAll();
+            ddPlanetaryCandidates.add("item", "(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)");
+            ddPlanetaryCandidates.selection = 0;
+        };
+
+        btnPlanetaryExpand.onClick = function () {
+            var mVal = parseFloat(etModule.text) || 2.0;
+            var aVal = parseFloat(etAlpha.text) || 20.0;
+            var zsVal = parseInt(etPlanetaryZs.text, 10) || 18;
+            var zpVal = parseInt(etPlanetaryZp.text, 10) || 18;
+            var zrVal = parseInt(etPlanetaryZr.text, 10) || (zsVal + 2 * zpVal);
+            var nVal = parseInt(etPlanetaryN.text, 10) || 3;
+
+            trainNodes = InvoluteMath.expandPlanetaryToNodes({
+                m: mVal,
+                zs: zsVal,
+                zp: zpVal,
+                zr: zrVal,
+                numPlanets: nVal,
+                alphaDeg: aVal
+            });
+
+            ddMechanism.selection = 0;
+            switchMechanism(0);
+            refreshTrainList("S1");
+            updatePreview();
+        };
+
+        ddPlanetaryCandidates.onChange = function () {
+            if (!ddPlanetaryCandidates.selection) return;
+            var txt = ddPlanetaryCandidates.selection.text;
+            var mS = txt.match(/S:(\d+)/);
+            var mP = txt.match(/P:(\d+)/);
+            var mR = txt.match(/R:(\d+)/);
+            var mN = txt.match(/N=(\d+)/);
+            if (mS && mP && mR) {
+                etPlanetaryZs.text = mS[1];
+                etPlanetaryZp.text = mP[1];
+                etPlanetaryZr.text = mR[1];
+                if (mN) etPlanetaryN.text = mN[1];
+                updatePreview();
+            }
+        };
+
+        btnParadoxSolve.onClick = function () {
+            var target = parseFloat(etParadoxTargetRatio.text);
+            var m = parseFloat(etModule.text) || 2.0;
+            var alphaDeg = parseFloat(etAlpha.text) || 20.0;
+            var N = parseInt(etParadoxN.text, 10);
+            var zs = parseInt(etParadoxZs.text, 10);
+            var zp = parseInt(etParadoxZp.text, 10);
+            var zr1 = parseInt(etParadoxZr1.text, 10);
+            var zr2 = parseInt(etParadoxZr2.text, 10);
+
+            var specs = {
+                targetRatio: (!isNaN(target) && target !== 0) ? target : null,
+                m: m,
+                alphaDeg: alphaDeg,
+                numPlanets: (!isNaN(N) && N > 0) ? N : null,
+                fixedZs: (!isNaN(zs) && zs > 0) ? zs : null,
+                fixedZp: (!isNaN(zp) && zp > 0) ? zp : null,
+                fixedZr1: (!isNaN(zr1) && zr1 > 0) ? zr1 : null,
+                fixedZr2: (!isNaN(zr2) && zr2 > 0) ? zr2 : null,
+                tol: 0.20
+            };
+
+            var list = InvoluteMath.solveParadoxicalPlanetary(specs);
+            ddParadoxCandidates.removeAll();
+            if (list.length === 0) {
+                ddParadoxCandidates.add("item", "(\u6761\u4ef6\u306b\u5408\u81f4\u3059\u308b\u5019\u88dc\u304c\u3042\u308a\u307e\u305b\u3093)");
+                ddParadoxCandidates.selection = 0;
+            } else {
+                for (var i = 0; i < list.length; i++) {
+                    ddParadoxCandidates.add("item", list[i].label);
+                }
+                ddParadoxCandidates.selection = 0;
+                etParadoxZs.text = String(list[0].zs);
+                etParadoxZp.text = String(list[0].zp);
+                etParadoxZr1.text = String(list[0].zr1);
+                etParadoxZr2.text = String(list[0].zr2);
+                etParadoxN.text = String(list[0].numPlanets);
+                updatePreview();
+            }
+        };
+
+        btnParadoxClear.onClick = function () {
+            etParadoxZs.text = "";
+            etParadoxZp.text = "";
+            etParadoxZr1.text = "";
+            etParadoxZr2.text = "";
+            etParadoxN.text = "";
+            etParadoxTargetRatio.text = "";
+            ddParadoxCandidates.removeAll();
+            ddParadoxCandidates.add("item", "(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)");
+            ddParadoxCandidates.selection = 0;
+        };
+
+        btnParadoxExpand.onClick = function () {
+            var mVal = parseFloat(etModule.text) || 2.0;
+            var aVal = parseFloat(etAlpha.text) || 20.0;
+            var zsVal = parseInt(etParadoxZs.text, 10) || 24;
+            var zpVal = parseInt(etParadoxZp.text, 10) || 18;
+            var zr1Val = parseInt(etParadoxZr1.text, 10) || (zsVal + 2 * zpVal);
+            var zr2Val = parseInt(etParadoxZr2.text, 10) || (zr1Val - 1);
+            var nVal = parseInt(etParadoxN.text, 10) || 3;
+
+            var alpha = aVal * (Math.PI / 180.0);
+            var a = (mVal * (zsVal + zpVal)) / 2.0;
+            var a0_2 = (mVal * (zr2Val - zpVal)) / 2.0;
+            var cosAw2 = (a0_2 / a) * Math.cos(alpha);
+            var xr2Val = 0.0;
+            if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
+                var aw2 = Math.acos(cosAw2);
+                var invAlpha = Math.tan(alpha) - alpha;
+                var invAw2 = Math.tan(aw2) - aw2;
+                xr2Val = (zr2Val - zpVal) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
+            }
+
+            trainNodes = InvoluteMath.expandParadoxicalToNodes({
+                m: mVal,
+                zs: zsVal,
+                zp: zpVal,
+                zr1: zr1Val,
+                zr2: zr2Val,
+                numPlanets: nVal,
+                alphaDeg: aVal,
+                xr2: xr2Val
+            });
+
+            ddMechanism.selection = 0;
+            switchMechanism(0);
+            refreshTrainList("S1");
+            updatePreview();
+        };
+
+        ddParadoxCandidates.onChange = function () {
+            if (!ddParadoxCandidates.selection) return;
+            var txt = ddParadoxCandidates.selection.text;
+            var mS = txt.match(/S:(\d+)/);
+            var mP = txt.match(/P:(\d+)/);
+            var mR1 = txt.match(/R1:(\d+)/);
+            var mR2 = txt.match(/R2:(\d+)/);
+            var mN = txt.match(/N=(\d+)/);
+            if (mS && mP && mR1 && mR2) {
+                etParadoxZs.text = mS[1];
+                etParadoxZp.text = mP[1];
+                etParadoxZr1.text = mR1[1];
+                etParadoxZr2.text = mR2[1];
+                if (mN) etParadoxN.text = mN[1];
+                updatePreview();
+            }
+        };
+
+        // ==========================================
+        // Common Action Footer
+        // ==========================================
         var grpBtns = win.add("group");
         grpBtns.orientation = "row";
-        grpBtns.alignment = "right";
+        grpBtns.alignment = ["fill", "bottom"];
+        grpBtns.spacing = 8;
+
+        var btnShowLog = grpBtns.add("button", undefined, "\u30ed\u30b0\u95b2\u89a7...");
+        btnShowLog.onClick = function () {
+            if (typeof CalcLogger !== "undefined") {
+                CalcLogger.showLogWindow("\u8a08\u7b97\u904e\u7a0b\u30ed\u30b0");
+            }
+        };
+
+        var btnResetToDefaults = grpBtns.add("button", undefined, "\u57fa\u672c\u8a2d\u5b9a\u304b\u3089\u521d\u671f\u5316");
+        btnResetToDefaults.helpTip = "\u57fa\u672c\u8a2d\u5b9a\u30bf\u30d6\u306e\u5024\u3092\u4f5c\u6210\u30bf\u30d6\u306e\u5404\u30ae\u30a2\u3078\u518d\u9069\u7528\u3057\u307e\u3059";
+        btnResetToDefaults.onClick = function () {
+            var defM = parseFloat(etModule.text) || 2.0;
+            var defAlpha = parseFloat(etAlpha.text) || 20.0;
+            var defShaft = parseFloat(etDefShaft.text) || 5.0;
+            var defShaftType = ddDefShaftType.selection ? ddDefShaftType.selection.text : "\u4e38\u7a74";
+            for (var t = 0; t < trainNodes.length; t++) {
+                trainNodes[t].m = defM;
+                trainNodes[t].alphaDeg = defAlpha;
+                trainNodes[t].shaftDiameter = defShaft;
+                trainNodes[t].shaftType = defShaftType;
+            }
+            refreshTrainList(trainNodes[0] ? trainNodes[0].id : null);
+            updatePreview();
+            alert("\u57fa\u672c\u8a2d\u5b9a\u306e\u5024 (m=" + defM + ", \u03b1=" + defAlpha + "\u00b0, \u8ef8=" + defShaft + "mm) \u3092\u5168\u30ae\u30a2\u3078\u53cd\u6620\u3057\u307e\u3057\u305f\u3002");
+        };
+
+        var spacerFooter = grpBtns.add("group");
+        spacerFooter.alignment = ["fill", "fill"];
+
         var btnCancel = grpBtns.add("button", undefined, "\u30ad\u30e3\u30f3\u30bb\u30eb", { name: "cancel" });
-        var btnOk = grpBtns.add("button", undefined, "\u6b6f\u8eca\u3092\u63cf\u753b (Generate)", { name: "ok" });
+        btnOk = grpBtns.add("button", undefined, "\u6b6f\u8eca\u3092\u63cf\u753b (Generate)", { name: "ok" });
 
         btnCancel.onClick = function () {
             win.close();
         };
 
         btnOk.onClick = function () {
-            var m = parseFloat(etModule.text);
-            var alphaDeg = parseFloat(etAlpha.text);
-            var z1 = parseInt(etG1Z.text, 10);
-            var z2 = parseInt(etG2Z.text, 10);
-            var g1Hole = parseFloat(etG1Hole.text) || 0;
-            var g2Hole = parseFloat(etG2Hole.text) || 0;
-            var backlash = parseFloat(etBacklash.text) || 0;
-            var angleDeg = parseFloat(etAngle.text) || 0;
+            try {
+                var m = parseFloat(etModule.text);
+                var alphaDeg = parseFloat(etAlpha.text);
+                var backlash = parseFloat(etBacklash.text) || 0;
+                var modeIdx = ddMechanism.selection ? ddMechanism.selection.index : 0;
 
-            if (isNaN(m) || m <= 0 || isNaN(z1) || z1 < 3 || isNaN(z2) || z2 < 3) {
-                alert("\u6709\u52b9\u306a\u30e2\u30b8\u30e5\u30fc\u30eb(>0)\u304a\u3088\u3073\u6b6f\u6570(>=3)\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
-                return;
-            }
-
-            var drawMode = "normal";
-            if (rbTestTeeth.value) {
-                drawMode = "test_teeth";
-            } else if (rbTestDis.value) {
-                drawMode = "test_disassembled";
-            }
-
-            var pathQuality = "bezier_recommended";
-            if (ddQuality.selection) {
-                if (ddQuality.selection.index === 1) {
-                    pathQuality = "bezier_minimal";
-                } else if (ddQuality.selection.index === 2) {
-                    pathQuality = "polyline";
+                if (isNaN(m) || m <= 0) {
+                    alert("\u6709\u52b9\u306a\u30e2\u30b8\u30e5\u30fc\u30eb(>0)\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+                    return;
                 }
-            }
 
-            win.close();
+                var pathQuality = "bezier_recommended";
+                if (ddQuality.selection) {
+                    if (ddQuality.selection.index === 1) {
+                        pathQuality = "bezier_minimal";
+                    } else if (ddQuality.selection.index === 2) {
+                        pathQuality = "polyline";
+                    }
+                }
 
-            if (onGenerate) {
-                onGenerate({
+                var cutStrokeWidth = (currentStyles && currentStyles.cut) ? (currentStyles.cut.strokeWidthPt * PT_TO_MM) : 0.5;
+                var guideStrokeWidth = (currentStyles && currentStyles.pitchGuide) ? (currentStyles.pitchGuide.strokeWidthPt * PT_TO_MM) : 0.25;
+
+                var circleFate = "guide";
+                if (ddCircleFate.selection) {
+                    if (ddCircleFate.selection.index === 1) circleFate = "delete";
+                    else if (ddCircleFate.selection.index === 2) circleFate = "keep";
+                }
+
+                var namingConfig = {
+                    mainLayer: etTemplateMain.text || "{train}",
+                    subLayer: etTemplateSub.text || "{train}_{layer}",
+                    dwgLayer: etTemplateDwg.text || "{train}_dwg",
+                    gearGroup: etTemplateGear.text || "{id}_{kind}_z{z}"
+                };
+
+                var snapMode = "exact_position";
+                if (ddSnapMode && ddSnapMode.selection) {
+                    if (ddSnapMode.selection.index === 1) snapMode = "snap_theory";
+                    else if (ddSnapMode.selection.index === 2) snapMode = "free";
+                }
+
+                var circleItems = [];
+                for (var c = 0; c < selectedCircles.length; c++) {
+                    if (selectedCircles[c].item) circleItems.push(selectedCircles[c].item);
+                }
+
+                var placementRef = "g1";
+                if (rbCircleOrigPos && rbCircleOrigPos.value) {
+                    placementRef = "original";
+                } else if (ddPlacementRef && ddPlacementRef.selection) {
+                    if (ddPlacementRef.selection.index === 1) placementRef = "bbox";
+                    else if (ddPlacementRef.selection.index === 2) placementRef = "artboard";
+                    else if (ddPlacementRef.selection.index === 3) placementRef = "selection";
+                    else placementRef = "g1";
+                }
+                var targetXmm = parseFloat(etTargetX.text) || 0;
+                var targetYmm = parseFloat(etTargetY.text) || 0;
+
+                var isSkelPerStage = (typeof rbSkelPerStage !== "undefined" && rbSkelPerStage && rbSkelPerStage.value);
+                var isSkelSingle = (typeof rbSkelSingle !== "undefined" && rbSkelSingle && rbSkelSingle.value);
+
+                var commonParams = {
                     m: m,
                     alphaDeg: alphaDeg,
-                    z1: z1,
-                    z2: z2,
-                    g1Hole: g1Hole,
-                    g2Hole: g2Hole,
                     backlash: backlash,
-                    angleDeg: angleDeg,
-                    drawMode: drawMode,
                     pathQuality: pathQuality,
-                    useFillet: chkFillet.value,
-                    drawGuides: chkGuides.value,
-                    drawText: chkText.value
-                });
+                    cutStrokeWidth: cutStrokeWidth,
+                    guideStrokeWidth: guideStrokeWidth,
+                    currentStyles: currentStyles,
+                    createCompound: (typeof chkCompound !== "undefined" && chkCompound) ? chkCompound.value : true,
+                    outputIndividualTeeth: (typeof chkIndividualTeeth !== "undefined" && chkIndividualTeeth) ? chkIndividualTeeth.value : false,
+                    pitchSameLayer: (typeof chkPitchSameLayer !== "undefined" && chkPitchSameLayer) ? chkPitchSameLayer.value : false,
+                    centerSameGroup: (typeof chkCenterSameGroup !== "undefined" && chkCenterSameGroup) ? chkCenterSameGroup.value : false,
+                    drawText: (typeof chkText !== "undefined" && chkText) ? chkText.value : true,
+                    skelMode: isSkelPerStage ? "per_stage" : "single",
+                    skelSingleLayer: isSkelSingle,
+                    skelPerStageLayer: isSkelPerStage,
+                    drawGuides: (typeof chkPitchSameLayer !== "undefined" && chkPitchSameLayer) ? (chkPitchSameLayer.value || chkCenterSameGroup.value) : true,
+                    useSelectedCircle: (typeof chkUseCircle !== "undefined" && chkUseCircle) ? chkUseCircle.value : false,
+                    selectedCircleItem: selectedCircleInfo ? selectedCircleInfo.item : null,
+                    selectedCircleItems: circleItems,
+                    circleFate: circleFate,
+                    circleCenterPt: (trainNodes && trainNodes.length > 0 && trainNodes[0].centerPt) ? trainNodes[0].centerPt : (selectedCircleInfo ? selectedCircleInfo.centerPt : null),
+                    placementRef: placementRef,
+                    targetXmm: targetXmm,
+                    targetYmm: targetYmm,
+                    trainId: (typeof etTrainId !== "undefined" && etTrainId && etTrainId.text) ? etTrainId.text : "T1",
+                    drawDwgLayer: (isSkelSingle || isSkelPerStage),
+                    naming: namingConfig,
+                    snapMode: snapMode,
+                    allowCrossLayerMeshing: (typeof chkCrossLayerMesh !== "undefined" && chkCrossLayerMesh) ? chkCrossLayerMesh.value : false,
+                    keepExactCenterPositions: (snapMode === "exact_position" || snapMode === "free"),
+                    recordLog: (typeof chkRecordLog !== "undefined" && chkRecordLog) ? chkRecordLog.value : false,
+                    logFolder: (typeof etLogFolder !== "undefined" && etLogFolder) ? etLogFolder.text : ""
+                };
+
+                var payload = null;
+
+                if (modeIdx === 0) { // Gear Train (Spur & Internal & Rack)
+                    if (!trainNodes || trainNodes.length === 0) {
+                        alert("\u8f2a\u5217\u306b\u306f\u6700\u4f4e1\u3064\u306e\u30ae\u30a2\u304c\u5fc5\u8981\u3067\u3059\u3002");
+                        return;
+                    }
+
+                    // Check duplicate train layer in document
+                    var currentTrainId = (etTrainId && etTrainId.text) ? etTrainId.text.replace(/[\s\/\:\*\?"\<\>\|]/g, "") : "T1";
+                    if (!currentTrainId) currentTrainId = "T1";
+
+                    var targetLayerName = InvoluteMath.formatName(namingConfig.mainLayer, {
+                        train: currentTrainId,
+                        m: m
+                    });
+
+                    var doc = null;
+                    try {
+                        if (app.documents.length > 0) doc = app.activeDocument;
+                    } catch (e) {}
+
+                    if (doc) {
+                        var layerExists = false;
+                        for (var ly = 0; ly < doc.layers.length; ly++) {
+                            if (doc.layers[ly].name === targetLayerName || doc.layers[ly].name === currentTrainId) {
+                                layerExists = true;
+                                break;
+                            }
+                        }
+
+                        if (layerExists) {
+                            var dupDlg = new Window("dialog", "\u8f2a\u5217ID\u306e\u91cd\u8907\u78ba\u8a8d");
+                            dupDlg.orientation = "column";
+                            dupDlg.alignChildren = ["fill", "top"];
+                            dupDlg.spacing = 12;
+                            dupDlg.margins = 16;
+
+                            var msgTxt = "\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u5185\u306b\u8f2a\u5217 '" + currentTrainId + "' \u306e\u30ec\u30a4\u30e4\u30fc ('" + targetLayerName + "') \u304c\u65e2\u306b\u5b58\u5728\u3057\u307e\u3059\u3002\n\n" +
+                                "\u4f5c\u56f3\u65b9\u6cd5\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\uff1a\n" +
+                                "\u30fb\u3010\u4e0a\u66f8\u304d\u3011: \u65e2\u5b58\u30ec\u30a4\u30e4\u30fc\u5185\u306e\u30a2\u30a4\u30c6\u30e0\u30fb\u4e0b\u4f4d\u30ec\u30a4\u30e4\u30fc\u3092\u5168\u524a\u9664\u3057\u3001\u65b0\u898f\u4f5c\u56f3\u3057\u307e\u3059\u3002\n" +
+                                "\u30fb\u3010\u6df7\u5728\u3011: \u65e2\u5b58\u306e\u8f2a\u5217\u30ec\u30a4\u30e4\u30fc\u3092\u6b8b\u3057\u305f\u307e\u307e\u3001\u65b0\u3057\u3044\u30ae\u30a2\u3092\u8ffd\u52a0\u4f5c\u56f3\u3057\u307e\u3059\u3002\n" +
+                                "\u30fb\u3010\u30ad\u30e3\u30f3\u30bb\u30eb\u3011: \u4f5c\u56f3\u3092\u4e2d\u65ad\u3057\u3001\u7de8\u96c6\u753b\u9762\u306b\u623b\u308a\u307e\u3059\uff08\u8f2a\u5217ID\u306e\u5909\u66f4\u304c\u53ef\u80fd\u3067\u3059\uff09\u3002";
+                            var stMsg = dupDlg.add("statictext", undefined, msgTxt, { multiline: true });
+                            stMsg.preferredSize.width = 440;
+
+                            var grpDupBtns = dupDlg.add("group");
+                            grpDupBtns.orientation = "row";
+                            grpDupBtns.alignment = "right";
+                            grpDupBtns.spacing = 8;
+
+                            var btnOverwrite = grpDupBtns.add("button", undefined, "\u4e0a\u66f8\u304d (\u65e2\u5b58\u524a\u9664 & \u518d\u63cf\u753b)");
+                            var btnCoexist = grpDupBtns.add("button", undefined, "\u6df7\u5728 (\u65e2\u5b58\u306b\u8ffd\u52a0)");
+                            var btnCancelDup = grpDupBtns.add("button", undefined, "\u30ad\u30e3\u30f3\u30bb\u30eb", { name: "cancel" });
+
+                            var dupChoice = "cancel";
+                            btnOverwrite.onClick = function () {
+                                dupChoice = "overwrite";
+                                dupDlg.close();
+                            };
+                            btnCoexist.onClick = function () {
+                                dupChoice = "coexist";
+                                dupDlg.close();
+                            };
+                            btnCancelDup.onClick = function () {
+                                dupChoice = "cancel";
+                                dupDlg.close();
+                            };
+
+                            dupDlg.show();
+
+                            if (dupChoice === "cancel") {
+                                return;
+                            } else if (dupChoice === "overwrite") {
+                                commonParams.overwriteLayer = true;
+                            } else {
+                                commonParams.overwriteLayer = false;
+                            }
+                        }
+                    }
+
+                    payload = {
+                        mechanismType: "branched",
+                        nodes: trainNodes
+                    };
+                } else if (modeIdx === 1) { // 2K-H Planetary
+                    var zs = parseInt(etPlanetaryZs.text, 10);
+                    var zp = parseInt(etPlanetaryZp.text, 10);
+                    var zr = parseInt(etPlanetaryZr.text, 10);
+                    var N = parseInt(etPlanetaryN.text, 10) || 3;
+                    if (isNaN(zs) || isNaN(zp) || isNaN(zr) || zr !== (zs + 2 * zp)) {
+                        alert("\u540c\u5fc3\u6761\u4ef6\u304c\u6210\u7acb\u3057\u3066\u3044\u307e\u305b\u3093 (zr \u306f zs + 2*zp \u3068\u7b49\u3057\u304f\u306a\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u305b\u3093)\u3002");
+                        return;
+                    }
+                    payload = {
+                        mechanismType: "planetary",
+                        zs: zs,
+                        zp: zp,
+                        zr: zr,
+                        numPlanets: N,
+                        rimThickness: 3.0 * m
+                    };
+                } else if (modeIdx === 2) { // 3K Paradoxical
+                    var zs = parseInt(etParadoxZs.text, 10);
+                    var zp = parseInt(etParadoxZp.text, 10);
+                    var zr1 = parseInt(etParadoxZr1.text, 10);
+                    var zr2 = parseInt(etParadoxZr2.text, 10);
+                    var N = parseInt(etParadoxN.text, 10) || 3;
+                    if (isNaN(zs) || isNaN(zp) || isNaN(zr1) || isNaN(zr2) || zr1 !== (zs + 2 * zp)) {
+                        alert("\u56fa\u5b9a\u5074\u5185\u6b6f\u8eca\u306e\u540c\u5fc3\u6761\u4ef6\u304c\u6210\u7acb\u3057\u3066\u3044\u307e\u305b\u3093 (zr1 = zs + 2*zp)\u3002");
+                        return;
+                    }
+                    payload = {
+                        mechanismType: "paradoxical",
+                        zs: zs,
+                        zp: zp,
+                        zr1: zr1,
+                        zr2: zr2,
+                        numPlanets: N,
+                        rimThickness: 3.0 * m
+                    };
+                }
+
+                win.close();
+
+                if (onGenerate && payload) {
+                    for (var key in commonParams) {
+                        if (commonParams.hasOwnProperty(key)) {
+                            payload[key] = commonParams[key];
+                        }
+                    }
+                    onGenerate(payload);
+                }
+            } catch (err) {
+                alert("\u30ae\u30a2\u751f\u6210\u306e\u524d\u51e6\u7406\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + err.message + "\n(Line " + err.line + ")");
             }
         };
+
+        switchMechanism(0);
+        win.layout.layout(true);
+        if (win.layout && typeof win.layout.resize === "function") {
+            win.layout.resize();
+        }
 
         win.show();
     }
@@ -1303,70 +8621,275 @@ var DialogView = (function () {
     };
 })();
 
+/**
+ * MainController.jsxinc - Main Execution Dispatcher for Adobe Illustrator
+ * Version: 0.9.14
+ * Part of GearDrawer Architecture
+ */
 
-// --- Main Execution Controller ---
-(function main() {
-    if (app.documents.length === 0) {
-        // Document not open alert
-        alert("\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u304c\u958b\u304b\u308c\u3066\u3044\u307e\u305b\u3093\u3002\n\u65b0\u898f\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u3092\u4f5c\u6210\u3057\u3066\u304b\u3089\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
-        return;
+var MainController = (function () {
+    var _version = "0.9.14";
+
+    function run(version) {
+        if (version) _version = version;
+
+        if (app.documents.length === 0) {
+            alert("\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u304c\u958b\u304b\u308c\u3066\u3044\u307e\u305b\u3093\u3002\n\u65b0\u898f\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u3092\u4f5c\u6210\u3057\u3066\u304b\u3089\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+            return;
+        }
+
+        var doc = app.activeDocument;
+
+        DialogView.show(function (params) {
+            if (typeof CalcLogger !== "undefined") {
+                CalcLogger.setEnabled(params.recordLog);
+                CalcLogger.setVersion(_version);
+                CalcLogger.log("MAIN", "GearDrawer execution initiated", {
+                    mechanismType: params.mechanismType,
+                    m: params.m,
+                    alphaDeg: params.alphaDeg,
+                    backlash: params.backlash,
+                    recordLog: params.recordLog,
+                    logFolder: params.logFolder
+                });
+            }
+
+            try {
+                // Ensure document active layer is unlocked
+                try {
+                    if (doc.activeLayer && doc.activeLayer.locked) {
+                        doc.activeLayer.locked = false;
+                    }
+                    if (doc.activeLayer && !doc.activeLayer.visible) {
+                        doc.activeLayer.visible = true;
+                    }
+                } catch (eALInit) {}
+
+                var options = {
+                    drawMode: params.drawMode || "normal",
+                    cutStrokeWidth: params.cutStrokeWidth,
+                    guideStrokeWidth: params.guideStrokeWidth,
+                    currentStyles: params.currentStyles,
+                    createCompound: params.createCompound,
+                    pitchSameLayer: params.pitchSameLayer,
+                    centerSameGroup: params.centerSameGroup,
+                    drawGuides: (params.drawGuides !== undefined) ? params.drawGuides : true,
+                    drawText: (params.drawText !== undefined) ? params.drawText : true,
+                    skelMode: params.skelMode || "single",
+                    skelSingleLayer: params.skelSingleLayer,
+                    skelPerStageLayer: params.skelPerStageLayer,
+                    baseOrigin: (params.useSelectedCircle && params.circleCenterPt) ? params.circleCenterPt : null,
+                    placementRef: params.placementRef || "original",
+                    targetXmm: (params.targetXmm !== undefined) ? params.targetXmm : 0,
+                    targetYmm: (params.targetYmm !== undefined) ? params.targetYmm : 0,
+                    trainId: params.trainId || "T1",
+                    overwriteLayer: (params.overwriteLayer === true),
+                    drawDwgLayer: (params.drawDwgLayer !== undefined) ? params.drawDwgLayer : true,
+                    naming: params.naming
+                };
+
+                // Handle original selected circles if applicable
+                if (params.useSelectedCircle && params.selectedCircleItems && params.selectedCircleItems.length > 0) {
+                    PathBuilder.handleSelectedCircles(params.selectedCircleItems, params.circleFate);
+                } else if (params.useSelectedCircle && params.selectedCircleItem) {
+                    PathBuilder.handleSelectedCircles(params.selectedCircleItem, params.circleFate);
+                }
+
+                if (params.mechanismType === "spur") {
+                    // 1. Spur Gear Pair
+                    var gear1Data = InvoluteMath.calculateSpurGear({
+                        m: params.m,
+                        z: params.z1,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        shaftDiameter: params.g1Hole,
+                        useFillet: true,
+                        rcFactor: 0.38,
+                        pathQuality: params.pathQuality
+                    });
+
+                    var gear2Data = InvoluteMath.calculateSpurGear({
+                        m: params.m,
+                        z: params.z2,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        shaftDiameter: params.g2Hole,
+                        useFillet: true,
+                        rcFactor: 0.38,
+                        pathQuality: params.pathQuality
+                    });
+
+                    var meshing = InvoluteMath.calculateMeshingPair(
+                        params.m,
+                        params.z1,
+                        params.z2,
+                        params.angleDeg || 0,
+                        0
+                    );
+
+                    PathBuilder.drawMeshingPair(doc, {
+                        gear1Data: gear1Data,
+                        gear2Data: gear2Data,
+                        meshing: meshing,
+                        options: options
+                    });
+
+                } else if (params.mechanismType === "rack") {
+                    // 2. Rack & Pinion
+                    var pinionData = InvoluteMath.calculateSpurGear({
+                        m: params.m,
+                        z: params.zp,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        shaftDiameter: params.shaftDiameter,
+                        useFillet: true,
+                        rcFactor: 0.38,
+                        pathQuality: params.pathQuality
+                    });
+
+                    var rackData = InvoluteMath.calculateRack({
+                        m: params.m,
+                        numTeeth: params.numTeethRack,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        rackHeight: params.rackHeight,
+                        useFillet: true
+                    });
+
+                    var rackMeshing = InvoluteMath.calculateRackMeshing(
+                        params.m,
+                        params.zp,
+                        params.numTeethRack,
+                        0.0
+                    );
+
+                    PathBuilder.drawRackAndPinionPair(doc, {
+                        pinionData: pinionData,
+                        rackData: rackData,
+                        rackMeshing: rackMeshing,
+                        options: options
+                    });
+
+                } else if (params.mechanismType === "internal") {
+                    // 3. Internal Gear Pair
+                    var pinionData = InvoluteMath.calculateSpurGear({
+                        m: params.m,
+                        z: params.zp,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        shaftDiameter: params.shaftDiameter,
+                        useFillet: true,
+                        rcFactor: 0.38,
+                        pathQuality: params.pathQuality
+                    });
+
+                    var internalData = InvoluteMath.calculateInternalGear({
+                        m: params.m,
+                        z: params.zr,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        rimThickness: params.rimThickness,
+                        pathQuality: params.pathQuality
+                    });
+
+                    var internalMeshing = InvoluteMath.calculateInternalMeshing(
+                        params.m,
+                        params.zp,
+                        params.zr,
+                        params.contactAngleDeg !== undefined ? params.contactAngleDeg : -90.0,
+                        0.0
+                    );
+
+                    PathBuilder.drawInternalMeshingPair(doc, {
+                        pinionData: pinionData,
+                        internalData: internalData,
+                        internalMeshing: internalMeshing,
+                        options: options
+                    });
+
+                } else if (params.mechanismType === "planetary") {
+                    // 4. Standard 2K-H Planetary
+                    var planetaryData = InvoluteMath.calculateStandardPlanetary({
+                        m: params.m,
+                        zs: params.zs,
+                        zp: params.zp,
+                        zr: params.zr,
+                        numPlanets: params.numPlanets,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        rimThickness: params.rimThickness,
+                        pathQuality: params.pathQuality
+                    });
+
+                    PathBuilder.drawStandardPlanetary(doc, planetaryData, options);
+
+                } else if (params.mechanismType === "paradoxical") {
+                    // 5. 3K Paradoxical Planetary
+                    var paradoxData = InvoluteMath.calculateParadoxicalPlanetary({
+                        m: params.m,
+                        zs: params.zs,
+                        zp: params.zp,
+                        zr1: params.zr1,
+                        zr2: params.zr2,
+                        numPlanets: params.numPlanets,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        rimThickness: params.rimThickness,
+                        pathQuality: params.pathQuality
+                    });
+
+                    PathBuilder.drawParadoxicalPlanetary(doc, paradoxData, options);
+                } else if (params.mechanismType === "branched") {
+                    // 6. Branched Gear Train
+                    var trainData = InvoluteMath.calculateBranchedGearTrain({
+                        m: params.m,
+                        alphaDeg: params.alphaDeg,
+                        backlash: params.backlash,
+                        pathQuality: params.pathQuality,
+                        nodes: params.nodes,
+                        snapMode: params.snapMode,
+                        keepExactCenterPositions: params.keepExactCenterPositions
+                    });
+
+                    PathBuilder.drawBranchedGearTrain(doc, trainData, options);
+                }
+
+                // Redraw screen
+                try { if (app && typeof app.redraw === "function") app.redraw(); } catch (eR) {}
+
+                if (typeof CalcLogger !== "undefined") {
+                    CalcLogger.log("MAIN", "Gear generation completed successfully");
+                    if (params.recordLog) {
+                        var exportedPath = CalcLogger.exportToFile(params.logFolder);
+                        var successMsg = "\u6b6f\u8eca\u306e\u63cf\u753b\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002";
+                        if (exportedPath) {
+                            successMsg += "\n\n\u3010\u8a08\u7b97\u30ed\u30b0\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3011\n" + exportedPath;
+                        }
+                        alert(successMsg);
+                    }
+                }
+
+            } catch (e) {
+                if (typeof CalcLogger !== "undefined") {
+                    CalcLogger.error("MAIN", "Fatal error during gear generation", e);
+                    var errLogPath = CalcLogger.exportToFile(params.logFolder);
+                    var errMsg = "\u6b6f\u8eca\u306e\u751f\u6210\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + e.message + "\n(Line " + e.line + ")";
+                    if (errLogPath) {
+                        errMsg += "\n\n\u3010\u30a8\u30e9\u30fc\u5831\u544a\u7528\u8a08\u7b97\u30ed\u30b0\u3092\u81ea\u52d5\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3011\n" + errLogPath;
+                    }
+                    alert(errMsg);
+                    CalcLogger.showLogWindow("\u30a8\u30e9\u30fc\u5831\u544a\u7528 \u8a08\u7b97\u30ed\u30b0", "\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002\u4ee5\u4e0b\u306e\u30ed\u30b0\u3092\u30b3\u30d4\u30fc\u3057\u3066\u5831\u544a\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+                } else {
+                    alert("\u6b6f\u8eca\u306e\u751f\u6210\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + e.message + "\n(Line " + e.line + ")");
+                }
+            }
+        });
     }
 
-    var doc = app.activeDocument;
-
-    DialogView.show(function (params) {
-        try {
-            // 1. Calculate Gear 1 geometry (Pure mathematical calculations)
-            var gear1Data = InvoluteMath.calculateSpurGear({
-                m: params.m,
-                z: params.z1,
-                alphaDeg: params.alphaDeg,
-                backlash: params.backlash,
-                shaftDiameter: params.g1Hole,
-                useFillet: params.useFillet,
-                rcFactor: 0.38,
-                pathQuality: params.pathQuality
-            });
-
-            // 2. Calculate Gear 2 geometry (Pure mathematical calculations)
-            var gear2Data = InvoluteMath.calculateSpurGear({
-                m: params.m,
-                z: params.z2,
-                alphaDeg: params.alphaDeg,
-                backlash: params.backlash,
-                shaftDiameter: params.g2Hole,
-                useFillet: params.useFillet,
-                rcFactor: 0.38,
-                pathQuality: params.pathQuality
-            });
-
-            // 3. Calculate meshing distance and rotation phase
-            var meshing = InvoluteMath.calculateMeshingPair(
-                params.m,
-                params.z1,
-                params.z2,
-                params.angleDeg,
-                0 // Gear 1 initial angle
-            );
-
-            // 4. Draw to active document
-            PathBuilder.drawMeshingPair(doc, {
-                gear1Data: gear1Data,
-                gear2Data: gear2Data,
-                meshing: meshing,
-                options: {
-                    drawMode: params.drawMode,
-                    drawGuides: params.drawGuides,
-                    drawText: params.drawText
-                }
-            });
-
-            // Redraw screen
-            app.redraw();
-
-        } catch (e) {
-            // Error during generation
-            alert("\u6b6f\u8eca\u306e\u751f\u6210\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + e.message + "\n(Line " + e.line + ")");
-        }
-    });
+    return {
+        run: run,
+        getVersion: function () { return _version; }
+    };
 })();
+
+MainController.run('0.9.17');
