@@ -6697,20 +6697,16 @@ var DialogView = (function () {
             } catch (eExp) {}
         };
 
-        // 6. Settings Profile I/O Panel (Local Preferences & JSON I/O)
-        var pnlProfileIO = tabSettings.add("panel", undefined, "\u6a19\u6e96\u8a2d\u5b9a\u306e\u4fdd\u5b58\u30fb\u521d\u671f\u5316 (Preferences Storage)");
+        // 6. Settings Profile I/O Panel (JSON Import / Export & Reset)
+        var pnlProfileIO = tabSettings.add("panel", undefined, "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u5165\u51fa\u529b (Profile Import / Export)");
         pnlProfileIO.orientation = "row";
         pnlProfileIO.alignChildren = ["left", "center"];
-        pnlProfileIO.spacing = 8;
+        pnlProfileIO.spacing = 10;
         pnlProfileIO.margins = 8;
 
-        var btnSaveLocalSettings = pnlProfileIO.add("button", undefined, "\u6a19\u6e96\u8a2d\u5b9a\u3092\u4fdd\u5b58 (\u30ed\u30fc\u30ab\u30eb\u4fdd\u5b58)");
-        btnSaveLocalSettings.helpTip = "\u73fe\u5728\u306e\u8a2d\u5b9a\u3092\u30d7\u30e9\u30b0\u30a4\u30f3\u74b0\u5883\u306b\u4fdd\u5b58\u3057\u3001\u6b21\u56de\u8d77\u52d5\u6642\u306b\u3082\u81ea\u52d5\u9069\u7528\u3057\u307e\u3057\u305f";
-
+        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u66f8\u304d\u51fa\u3057 (Save JSON)...");
+        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u8aad\u307f\u8fbc\u307f (Load JSON)...");
         var btnResetFactory = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u521d\u671f\u5316");
-
-        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u30d5\u30a1\u30a4\u30eb\u3078\u66f8\u304d\u51fa\u3057 (Save JSON)...");
-        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u30d5\u30a1\u30a4\u30eb\u304b\u3089\u8aad\u307f\u8fbc\u307f (Load JSON)...");
 
         function getCurrentPreferencesObject() {
             return {
@@ -6818,15 +6814,6 @@ var DialogView = (function () {
             }
         }
 
-        btnSaveLocalSettings.onClick = function () {
-            var profile = getCurrentPreferencesObject();
-            if (saveLocalSettings(profile)) {
-                alert("\u6a19\u6e96\u8a2d\u5b9a\u3092\u30ed\u30fc\u30ab\u30eb\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002\n\u6b21\u56de\u8d77\u52d5\u6642\u306b\u3082\u3053\u306e\u8a2d\u5b9a\u304c\u81ea\u52d5\u9069\u7528\u3055\u308c\u307e\u3059\u3002");
-            } else {
-                alert("\u30ed\u30fc\u30ab\u30eb\u4fdd\u5b58\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002");
-            }
-        };
-
         btnExportSettings.onClick = function () {
             exportSettingsProfile(getCurrentPreferencesObject());
         };
@@ -6834,6 +6821,9 @@ var DialogView = (function () {
         btnImportSettings.onClick = function () {
             importSettingsProfile(function (profile) {
                 applyPreferencesObject(profile);
+                try {
+                    saveLocalSettings(getCurrentPreferencesObject());
+                } catch (eAutoSave) {}
                 updatePreview();
             });
         };
@@ -8432,6 +8422,9 @@ var DialogView = (function () {
         btnOk = grpBtns.add("button", undefined, "\u6b6f\u8eca\u3092\u63cf\u753b (Generate)", { name: "ok" });
 
         btnCancel.onClick = function () {
+            try {
+                saveLocalSettings(getCurrentPreferencesObject());
+            } catch (ePrefSave) {}
             win.close();
         };
 
@@ -8697,6 +8690,13 @@ var DialogView = (function () {
         if (win.layout && typeof win.layout.resize === "function") {
             win.layout.resize();
         }
+
+        win.onClose = function () {
+            try {
+                saveLocalSettings(getCurrentPreferencesObject());
+            } catch (eCloseSave) {}
+            return true;
+        };
 
         win.show();
     }
