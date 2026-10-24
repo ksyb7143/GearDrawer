@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.17
+ * Version: 0.9.18
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -6157,6 +6157,57 @@ var DialogView = (function () {
     // ==========================================
     // 0d. Settings Profile I/O Helpers
     // ==========================================
+    function getLocalSettingsFile() {
+        var basePath = "";
+        try {
+            if (typeof Folder !== "undefined" && Folder.userData) {
+                basePath = Folder.userData.fsName;
+            }
+        } catch (eF) {}
+        if (!basePath && typeof process !== "undefined" && process.env) {
+            basePath = process.env.APPDATA || process.env.HOME || ".";
+        }
+        if (!basePath) basePath = "~";
+        var folder = new Folder(basePath + "/GearDrawer");
+        if (!folder.exists) {
+            try { folder.create(); } catch (eC) {}
+        }
+        return new File(folder.fsName + "/geardrawer_preferences.json");
+    }
+
+    function saveLocalSettings(profileObj) {
+        try {
+            var file = getLocalSettingsFile();
+            file.encoding = "UTF-8";
+            file.open("w");
+            file.write(SimpleJSON.stringify(profileObj, ""));
+            file.close();
+            return true;
+        } catch (eSave) {
+            return false;
+        }
+    }
+
+    function loadLocalSettings(onLoaded) {
+        try {
+            var file = getLocalSettingsFile();
+            if (file && file.exists) {
+                file.encoding = "UTF-8";
+                file.open("r");
+                var content = file.read();
+                file.close();
+                if (content && content.length > 0) {
+                    var profile = SimpleJSON.parse(content);
+                    if (profile && typeof profile === "object") {
+                        if (onLoaded) onLoaded(profile);
+                        return true;
+                    }
+                }
+            }
+        } catch (eLoad) {}
+        return false;
+    }
+
     function exportSettingsProfile(profileObj) {
         try {
             var file = File.saveDialog(
@@ -6646,19 +6697,23 @@ var DialogView = (function () {
             } catch (eExp) {}
         };
 
-        // 6. Settings Profile I/O Panel (Renamed reset button to "設定を初期化")
-        var pnlProfileIO = tabSettings.add("panel", undefined, "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u5165\u51fa\u529b (Profile Import / Export)");
+        // 6. Settings Profile I/O Panel (Local Preferences & JSON I/O)
+        var pnlProfileIO = tabSettings.add("panel", undefined, "\u6a19\u6e96\u8a2d\u5b9a\u306e\u4fdd\u5b58\u30fb\u521d\u671f\u5316 (Preferences Storage)");
         pnlProfileIO.orientation = "row";
         pnlProfileIO.alignChildren = ["left", "center"];
-        pnlProfileIO.spacing = 10;
+        pnlProfileIO.spacing = 8;
         pnlProfileIO.margins = 8;
 
-        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u66f8\u304d\u51fa\u3057 (Save JSON)...");
-        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u8aad\u307f\u8fbc\u307f (Load JSON)...");
+        var btnSaveLocalSettings = pnlProfileIO.add("button", undefined, "\u6a19\u6e96\u8a2d\u5b9a\u3092\u4fdd\u5b58 (\u30ed\u30fc\u30ab\u30eb\u4fdd\u5b58)");
+        btnSaveLocalSettings.helpTip = "\u73fe\u5728\u306e\u8a2d\u5b9a\u3092\u30d7\u30e9\u30b0\u30a4\u30f3\u74b0\u5883\u306b\u4fdd\u5b58\u3057\u3001\u6b21\u56de\u8d77\u52d5\u6642\u306b\u3082\u81ea\u52d5\u9069\u7528\u3057\u307e\u3057\u305f";
+
         var btnResetFactory = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u521d\u671f\u5316");
 
-        btnExportSettings.onClick = function () {
-            var profile = {
+        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u30d5\u30a1\u30a4\u30eb\u3078\u66f8\u304d\u51fa\u3057 (Save JSON)...");
+        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u30d5\u30a1\u30a4\u30eb\u304b\u3089\u8aad\u307f\u8fbc\u307f (Load JSON)...");
+
+        function getCurrentPreferencesObject() {
+            return {
                 version: "1.0.0",
                 timestamp: String(new Date()),
                 defaultSpecs: {
@@ -6698,62 +6753,87 @@ var DialogView = (function () {
                     logFolder: etLogFolder.text
                 }
             };
-            exportSettingsProfile(profile);
+        }
+
+        function applyPreferencesObject(profile) {
+            if (!profile || typeof profile !== "object") return;
+            if (profile.defaultSpecs) {
+                if (profile.defaultSpecs.m !== undefined) etModule.text = String(profile.defaultSpecs.m);
+                if (profile.defaultSpecs.alphaDeg !== undefined) etAlpha.text = String(profile.defaultSpecs.alphaDeg);
+                if (profile.defaultSpecs.backlash !== undefined) etBacklash.text = String(profile.defaultSpecs.backlash);
+                if (profile.defaultSpecs.kerf !== undefined) etKerf.text = String(profile.defaultSpecs.kerf);
+                if (profile.defaultSpecs.shaftDiameter !== undefined) etDefShaft.text = String(profile.defaultSpecs.shaftDiameter);
+                if (profile.defaultSpecs.shaftTypeIndex !== undefined && ddDefShaftType.items[profile.defaultSpecs.shaftTypeIndex]) {
+                    ddDefShaftType.selection = profile.defaultSpecs.shaftTypeIndex;
+                }
+                if (profile.defaultSpecs.thicknessMode === "tip") rbDefThickTip.value = true;
+                else rbDefThickRoot.value = true;
+            }
+            if (profile.styles) {
+                currentStyles = cloneObj(profile.styles);
+                ddStylePreset.selection = 3;
+            }
+            if (profile.creationOptions) {
+                if (profile.creationOptions.compound !== undefined) chkDefCompound.value = !!profile.creationOptions.compound;
+                if (profile.creationOptions.pitchSameLayer !== undefined) chkDefPitchSameLayer.value = !!profile.creationOptions.pitchSameLayer;
+                if (profile.creationOptions.centerSameGroup !== undefined) chkDefCenterSameGroup.value = !!profile.creationOptions.centerSameGroup;
+                if (profile.creationOptions.drawLabel !== undefined) chkDefDrawLabel.value = !!profile.creationOptions.drawLabel;
+                if (profile.creationOptions.individualTeeth !== undefined) chkDefIndividualTeeth.value = !!profile.creationOptions.individualTeeth;
+                if (profile.creationOptions.skelMode === "per_stage") rbDefSkelPerStage.value = true;
+                else rbDefSkelSingle.value = true;
+
+                if (typeof chkCompound !== "undefined" && chkCompound) chkCompound.value = chkDefCompound.value;
+                if (typeof chkPitchSameLayer !== "undefined" && chkPitchSameLayer) chkPitchSameLayer.value = chkDefPitchSameLayer.value;
+                if (typeof chkCenterSameGroup !== "undefined" && chkCenterSameGroup) chkCenterSameGroup.value = chkDefCenterSameGroup.value;
+                if (typeof chkText !== "undefined" && chkText) chkText.value = chkDefDrawLabel.value;
+                if (typeof chkIndividualTeeth !== "undefined" && chkIndividualTeeth) chkIndividualTeeth.value = chkDefIndividualTeeth.value;
+                if (typeof rbSkelPerStageLayer !== "undefined" && rbSkelPerStageLayer) rbSkelPerStageLayer.value = rbDefSkelPerStage.value;
+                if (typeof rbSkelSingleLayer !== "undefined" && rbSkelSingleLayer) rbSkelSingleLayer.value = rbDefSkelSingle.value;
+            }
+            if (profile.options) {
+                if (profile.options.pathQualityIndex !== undefined && ddQuality.items[profile.options.pathQualityIndex]) {
+                    ddQuality.selection = profile.options.pathQualityIndex;
+                }
+                if (profile.options.stylePresetIndex !== undefined && ddStylePreset.items[profile.options.stylePresetIndex]) {
+                    ddStylePreset.selection = profile.options.stylePresetIndex;
+                }
+            }
+            if (profile.naming) {
+                if (profile.naming.presetIndex !== undefined && ddNamingPreset.items[profile.naming.presetIndex]) {
+                    ddNamingPreset.selection = profile.naming.presetIndex;
+                }
+                if (profile.naming.mainLayer !== undefined) etTemplateMain.text = profile.naming.mainLayer;
+                if (profile.naming.subLayer !== undefined) etTemplateSub.text = profile.naming.subLayer;
+                if (profile.naming.dwgLayer !== undefined) etTemplateDwg.text = profile.naming.dwgLayer;
+                if (profile.naming.gearGroup !== undefined) etTemplateGear.text = profile.naming.gearGroup;
+            }
+            if (profile.analysisAndLog) {
+                if (profile.analysisAndLog.toleranceMm !== undefined) etTolerance.text = String(profile.analysisAndLog.toleranceMm);
+                if (profile.analysisAndLog.snapModeIndex !== undefined && ddSnapMode.items[profile.analysisAndLog.snapModeIndex]) {
+                    ddSnapMode.selection = profile.analysisAndLog.snapModeIndex;
+                }
+                if (profile.analysisAndLog.allowCrossLayerMeshing !== undefined) chkCrossLayerMesh.value = !!profile.analysisAndLog.allowCrossLayerMeshing;
+                if (profile.analysisAndLog.autoRecordLog !== undefined) chkAutoRecordLog.value = !!profile.analysisAndLog.autoRecordLog;
+                if (profile.analysisAndLog.logFolder !== undefined) etLogFolder.text = profile.analysisAndLog.logFolder;
+            }
+        }
+
+        btnSaveLocalSettings.onClick = function () {
+            var profile = getCurrentPreferencesObject();
+            if (saveLocalSettings(profile)) {
+                alert("\u6a19\u6e96\u8a2d\u5b9a\u3092\u30ed\u30fc\u30ab\u30eb\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002\n\u6b21\u56de\u8d77\u52d5\u6642\u306b\u3082\u3053\u306e\u8a2d\u5b9a\u304c\u81ea\u52d5\u9069\u7528\u3055\u308c\u307e\u3059\u3002");
+            } else {
+                alert("\u30ed\u30fc\u30ab\u30eb\u4fdd\u5b58\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002");
+            }
+        };
+
+        btnExportSettings.onClick = function () {
+            exportSettingsProfile(getCurrentPreferencesObject());
         };
 
         btnImportSettings.onClick = function () {
             importSettingsProfile(function (profile) {
-                if (profile.defaultSpecs) {
-                    if (profile.defaultSpecs.m !== undefined) etModule.text = String(profile.defaultSpecs.m);
-                    if (profile.defaultSpecs.alphaDeg !== undefined) etAlpha.text = String(profile.defaultSpecs.alphaDeg);
-                    if (profile.defaultSpecs.backlash !== undefined) etBacklash.text = String(profile.defaultSpecs.backlash);
-                    if (profile.defaultSpecs.kerf !== undefined) etKerf.text = String(profile.defaultSpecs.kerf);
-                    if (profile.defaultSpecs.shaftDiameter !== undefined) etDefShaft.text = String(profile.defaultSpecs.shaftDiameter);
-                    if (profile.defaultSpecs.shaftTypeIndex !== undefined && ddDefShaftType.items[profile.defaultSpecs.shaftTypeIndex]) {
-                        ddDefShaftType.selection = profile.defaultSpecs.shaftTypeIndex;
-                    }
-                    if (profile.defaultSpecs.thicknessMode === "tip") rbDefThickTip.value = true;
-                    else rbDefThickRoot.value = true;
-                }
-                if (profile.styles) {
-                    currentStyles = cloneObj(profile.styles);
-                    ddStylePreset.selection = 3;
-                }
-                if (profile.creationOptions) {
-                    if (profile.creationOptions.compound !== undefined) chkDefCompound.value = !!profile.creationOptions.compound;
-                    if (profile.creationOptions.pitchSameLayer !== undefined) chkDefPitchSameLayer.value = !!profile.creationOptions.pitchSameLayer;
-                    if (profile.creationOptions.centerSameGroup !== undefined) chkDefCenterSameGroup.value = !!profile.creationOptions.centerSameGroup;
-                    if (profile.creationOptions.drawLabel !== undefined) chkDefDrawLabel.value = !!profile.creationOptions.drawLabel;
-                    if (profile.creationOptions.individualTeeth !== undefined) chkDefIndividualTeeth.value = !!profile.creationOptions.individualTeeth;
-                    if (profile.creationOptions.skelMode === "per_stage") rbDefSkelPerStage.value = true;
-                    else rbDefSkelSingle.value = true;
-                }
-                if (profile.options) {
-                    if (profile.options.pathQualityIndex !== undefined && ddQuality.items[profile.options.pathQualityIndex]) {
-                        ddQuality.selection = profile.options.pathQualityIndex;
-                    }
-                    if (profile.options.stylePresetIndex !== undefined && ddStylePreset.items[profile.options.stylePresetIndex]) {
-                        ddStylePreset.selection = profile.options.stylePresetIndex;
-                    }
-                }
-                if (profile.naming) {
-                    if (profile.naming.presetIndex !== undefined && ddNamingPreset.items[profile.naming.presetIndex]) {
-                        ddNamingPreset.selection = profile.naming.presetIndex;
-                    }
-                    if (profile.naming.mainLayer !== undefined) etTemplateMain.text = profile.naming.mainLayer;
-                    if (profile.naming.subLayer !== undefined) etTemplateSub.text = profile.naming.subLayer;
-                    if (profile.naming.dwgLayer !== undefined) etTemplateDwg.text = profile.naming.dwgLayer;
-                    if (profile.naming.gearGroup !== undefined) etTemplateGear.text = profile.naming.gearGroup;
-                }
-                if (profile.analysisAndLog) {
-                    if (profile.analysisAndLog.toleranceMm !== undefined) etTolerance.text = String(profile.analysisAndLog.toleranceMm);
-                    if (profile.analysisAndLog.snapModeIndex !== undefined && ddSnapMode.items[profile.analysisAndLog.snapModeIndex]) {
-                        ddSnapMode.selection = profile.analysisAndLog.snapModeIndex;
-                    }
-                    if (profile.analysisAndLog.allowCrossLayerMeshing !== undefined) chkCrossLayerMesh.value = !!profile.analysisAndLog.allowCrossLayerMeshing;
-                    if (profile.analysisAndLog.autoRecordLog !== undefined) chkAutoRecordLog.value = !!profile.analysisAndLog.autoRecordLog;
-                    if (profile.analysisAndLog.logFolder !== undefined) etLogFolder.text = profile.analysisAndLog.logFolder;
-                }
+                applyPreferencesObject(profile);
                 updatePreview();
             });
         };
@@ -6781,8 +6861,9 @@ var DialogView = (function () {
             ddSnapMode.selection = 0;
             chkCrossLayerMesh.value = false;
             chkAutoRecordLog.value = false;
+            saveLocalSettings(getCurrentPreferencesObject());
             updatePreview();
-            alert("\u8a2d\u5b9a\u3092\u521d\u671f\u5316\u3057\u307e\u3057\u305f\u3002");
+            alert("\u8a2d\u5b9a\u3092\u521d\u671f\u5316\u3057\u3001\u30ed\u30fc\u30ab\u30eb\u8a2d\u5b9a\u3082\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002");
         };
 
         // ==========================================
@@ -7392,23 +7473,6 @@ var DialogView = (function () {
                 shaftType: "丸穴",
                 parentId: null,
                 relationType: "ROOT",
-                angleDeg: 0,
-                relativeAngleDeg: 0,
-                stageIndex: 1,
-                layerIndex: 1,
-                x: 0
-            },
-            {
-                id: "G2",
-                kind: "SPUR",
-                gearType: "SPUR",
-                z: 36,
-                m: 2.0,
-                alphaDeg: 20.0,
-                shaftDiameter: 5.0,
-                shaftType: "丸穴",
-                parentId: "G1",
-                relationType: "MESHING",
                 angleDeg: 0,
                 relativeAngleDeg: 0,
                 stageIndex: 1,
@@ -8592,6 +8656,11 @@ var DialogView = (function () {
                     };
                 }
 
+                // Auto-save preferences to local storage on draw
+                try {
+                    saveLocalSettings(getCurrentPreferencesObject());
+                } catch (ePrefSave) {}
+
                 win.close();
 
                 if (onGenerate && payload) {
@@ -8606,6 +8675,22 @@ var DialogView = (function () {
                 alert("\u30ae\u30a2\u751f\u6210\u306e\u524d\u51e6\u7406\u4e2d\u306b\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f:\n" + err.message + "\n(Line " + err.line + ")");
             }
         };
+
+        // Auto-load local preferences on startup
+        try {
+            loadLocalSettings(function (profile) {
+                applyPreferencesObject(profile);
+            });
+        } catch (ePrefLoad) {}
+
+        // If G1 is the only gear, sync its specs with loaded preferences
+        if (trainNodes && trainNodes.length === 1 && trainNodes[0].id === "G1") {
+            trainNodes[0].m = parseFloat(etModule.text) || 2.0;
+            trainNodes[0].alphaDeg = parseFloat(etAlpha.text) || 20.0;
+            trainNodes[0].shaftDiameter = parseFloat(etDefShaft.text) || 5.0;
+            trainNodes[0].shaftType = ddDefShaftType.selection ? ddDefShaftType.selection.text : "丸穴";
+            refreshTrainList("G1");
+        }
 
         switchMechanism(0);
         win.layout.layout(true);
@@ -8892,4 +8977,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.17');
+MainController.run('0.9.18');
