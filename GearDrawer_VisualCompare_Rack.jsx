@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Rack - Visual Verification for Rack & Pinion
- * Version: 0.9.18
+ * Version: 0.9.19
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */
@@ -1249,15 +1249,36 @@ function logWarn(category, msg, data) {
                 ];
             } else if (blankArcNodes.length > 0) {
                 // Step transition to different radius (e.g. tip locking drum)
-                outerNodes[outerNodes.length - 1].pointType = "CORNER";
+                var lastActiveNode = outerNodes[outerNodes.length - 1];
+                lastActiveNode.pointType = "CORNER";
+                // Radial wall: outgoing handle from last active tooth root must be zero length
+                lastActiveNode.rightDirection = [lastActiveNode.anchor[0], lastActiveNode.anchor[1]];
+
+                // Radial wall: incoming handle to first active tooth root must be zero length
                 outerNodes[0].pointType = "CORNER";
+                outerNodes[0].leftDirection = [outerNodes[0].anchor[0], outerNodes[0].anchor[1]];
 
                 for (var b = 0; b < blankArcNodes.length; b++) {
                     var bNode = blankArcNodes[b];
+                    var ptAnchor = [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000];
+                    var ptLeft = [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000];
+                    var ptRight = [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000];
+
+                    if (b === 0) {
+                        // Start of blank arc: connected from tooth root via radial line segment.
+                        // Incoming handle must be zero length to prevent self-intersecting loop.
+                        ptLeft = [ptAnchor[0], ptAnchor[1]];
+                    }
+                    if (b === blankArcNodes.length - 1) {
+                        // End of blank arc: connected to first tooth root via radial line segment.
+                        // Outgoing handle must be zero length to prevent self-intersecting loop.
+                        ptRight = [ptAnchor[0], ptAnchor[1]];
+                    }
+
                     outerNodes.push({
-                        anchor: [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000],
-                        leftDirection: [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000],
-                        rightDirection: [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                        anchor: ptAnchor,
+                        leftDirection: ptLeft,
+                        rightDirection: ptRight,
                         pointType: (b === 0 || b === blankArcNodes.length - 1) ? "CORNER" : "SMOOTH"
                     });
                 }
@@ -4006,14 +4027,38 @@ function logWarn(category, msg, data) {
                         child.rotationDeg = phiChildRad * (180.0 / Math.PI);
                     }
 
-                    if (config.keepExactCenterPositions || config.snapMode === "exact_position" || config.snapMode === "free") {
+                    // Check if child has a real selected circle from Illustrator
+                    var hasExplicitCircle = !!(child.origCircle);
+                    var useExactCirclePosition = hasExplicitCircle && (config.keepExactCenterPositions || config.snapMode === "exact_position" || config.snapMode === "free");
+
+                    if (useExactCirclePosition) {
                         child.centerMm = [child.xOffset, child.yOffset];
                         child.centerPt = [child.xOffset * MM_TO_PT, child.yOffset * MM_TO_PT];
                     } else {
-                        child.centerMm = [
-                            curr.centerMm[0] + a_mm * Math.cos(angleRad),
-                            curr.centerMm[1] + a_mm * Math.sin(angleRad)
-                        ];
+                        // Kinematic center placement based on parent and connection angle
+                        // User specification: Pitch circle contacts at angle thetaDeg from parent center (X+ axis reference)
+                        if (child.gearType === "RACK") {
+                            // Rack pitch line contacts pinion pitch circle at (rp * cos(angleRad), rp * sin(angleRad))
+                            var rpPinion = (curr.m * curr.z) / 2.0;
+                            child.centerMm = [
+                                curr.centerMm[0] + rpPinion * Math.cos(angleRad),
+                                curr.centerMm[1] + rpPinion * Math.sin(angleRad)
+                            ];
+                        } else if (curr.gearType !== "INTERNAL" && child.gearType === "INTERNAL") {
+                            // External Pinion (parent) inside Internal Ring (child)
+                            // Contact is at parent + rp_parent * (cos theta, sin theta).
+                            // Ring center is shifted in opposite direction by a_mm = (z_ring - z_pinion)*m / 2:
+                            child.centerMm = [
+                                curr.centerMm[0] - a_mm * Math.cos(angleRad),
+                                curr.centerMm[1] - a_mm * Math.sin(angleRad)
+                            ];
+                        } else {
+                            // External x External or Internal x External:
+                            child.centerMm = [
+                                curr.centerMm[0] + a_mm * Math.cos(angleRad),
+                                curr.centerMm[1] + a_mm * Math.sin(angleRad)
+                            ];
+                        }
                         child.centerPt = [
                             child.centerMm[0] * MM_TO_PT,
                             child.centerMm[1] * MM_TO_PT
