@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Rack - Visual Verification for Rack & Pinion
- * Version: 0.9.20
+ * Version: 0.9.21
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */
@@ -4751,7 +4751,7 @@ var PathBuilder = (function () {
         try { doc.activeLayer = targetLayer; } catch (eAL) {}
         options = options || {};
         var outputIndividualTeeth = !!(options.outputIndividualTeeth || options.individualTeeth);
-        var mode = options.drawMode || (outputIndividualTeeth ? "test_teeth" : "normal"); // "normal" | "test_teeth" | "test_disassembled"
+        var mode = (options.drawMode && options.drawMode !== "normal") ? options.drawMode : (outputIndividualTeeth ? "test_teeth" : "normal");
         var cutStrokeWidth = (options.cutStrokeWidth !== undefined) ? options.cutStrokeWidth : STYLES.DEFAULT_CUT_WIDTH;
         var guideStrokeWidth = (options.guideStrokeWidth !== undefined) ? options.guideStrokeWidth : STYLES.DEFAULT_GUIDE_WIDTH;
         var cutColor = options.cutColor || STYLES.COLOR_CUT;
@@ -5780,6 +5780,16 @@ var PathBuilder = (function () {
                     options
                 );
             } else {
+                var gearOptions = options;
+                var nodeInd = (nd.outputIndividualTeeth !== undefined) ? nd.outputIndividualTeeth : nd.individualTeeth;
+                if (nodeInd !== undefined) {
+                    gearOptions = {};
+                    for (var optKey in options) {
+                        if (options.hasOwnProperty(optKey)) gearOptions[optKey] = options[optKey];
+                    }
+                    gearOptions.outputIndividualTeeth = !!nodeInd;
+                    gearOptions.individualTeeth = !!nodeInd;
+                }
                 drawGear(
                     doc,
                     targetLayer,
@@ -5787,7 +5797,7 @@ var PathBuilder = (function () {
                     nd.gearData,
                     nd.rotationDeg,
                     gearName,
-                    options
+                    gearOptions
                 );
             }
 
