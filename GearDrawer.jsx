@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.24
+ * Version: 0.9.25
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -7982,7 +7982,7 @@ var DialogView = (function () {
             nd.lockClearance = parseFloat(etLockClearance.text) || 0.15;
 
             nd.intermittentStructure = rbStructTwoLayer.value ? "two_layer" : "coplanar";
-            nd.blankRadiusType = (nd.intermittentRole === "DRIVER" && nd.intermittentStructure === "coplanar") ? "pitch" : "root";
+            nd.blankRadiusType = "root";
 
             // Enforce kinematic constraint z2 = S * k for coplanar intermittent indexing
             if (nd.intermittentRole === "DRIVEN" && nd.intermittentStructure === "coplanar") {
@@ -8258,7 +8258,7 @@ var DialogView = (function () {
                 activeTeeth: 2,
                 tipRelief: true,
                 intermittentStructure: "coplanar",
-                blankRadiusType: "pitch",
+                blankRadiusType: "root",
                 x: 0
             };
             syncNodeProperties(driverNode);
@@ -9280,4 +9280,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.24');
+MainController.run('0.9.25');

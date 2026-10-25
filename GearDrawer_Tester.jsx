@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_Tester - Automatic Test Runner for Adobe Illustrator
- * Version: 0.9.24
+ * Version: 0.9.25
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
