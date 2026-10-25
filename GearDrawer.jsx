@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.21
+ * Version: 0.9.22
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -4836,6 +4836,20 @@ var PathBuilder = (function () {
                 }
             }
 
+            // === STEP 4: Two-Layer Lock Plate (if present) ===
+            if (gearData.lockPlate && gearData.lockPlate.outerNodes && gearData.lockPlate.outerNodes.length > 0) {
+                var lockPlateGroup = gearGroup.groupItems.add();
+                lockPlateGroup.name = gearName + "_LockPlateLayer";
+                var lpPath = lockPlateGroup.pathItems.add();
+                lpPath.name = gearData.lockPlate.name || (gearName + "_LockPlate");
+                applyBezierNodes(lpPath, gearData.lockPlate.outerNodes, center, rotOffsetRad, MM_TO_PT);
+                lpPath.closed = true;
+                applyCutStyle(lpPath, cutStrokeWidth, cutColor);
+
+                var lpHole = drawShaftHoleItem(lockPlateGroup, center, gearData, rotOffsetRad, gearName + "_LockPlate", options);
+                if (lpHole) applyCutStyle(lpHole, cutStrokeWidth, cutColor);
+            }
+
         } else if (mode === "test_teeth") {
             // === 2. Individual Teeth Mode: Single tooth x z (independent paths) + root circle + shaft hole ===
             var teethGroup = gearGroup.groupItems.add();
@@ -4985,6 +4999,19 @@ var PathBuilder = (function () {
                 );
                 baseCircle.name = "BaseCircle_db" + gearData.baseDiameter.toFixed(1);
                 applyGuideStyle(baseCircle, guideStrokeWidth, guideColor, [2, 3]);
+            }
+
+            // 3. Intermittent Lock Arc Guide (if applicable)
+            if (gearData.intermittentRole && gearData.intermittentRole !== "NONE") {
+                var lr = (gearData.blankRadiusPt && gearData.blankRadiusPt > 0) ? gearData.blankRadiusPt : pr;
+                var lockCircle = guideGroup.pathItems.ellipse(
+                    center[1] + lr,
+                    center[0] - lr,
+                    lr * 2,
+                    lr * 2
+                );
+                lockCircle.name = "LockGuide_" + gearData.intermittentRole;
+                applyGuideStyle(lockCircle, guideStrokeWidth, guideColor, [1, 3]);
             }
 
             var crossLen = Math.min(pr * 0.4, 15);
@@ -7155,22 +7182,60 @@ var DialogView = (function () {
         var rowNode5 = pnlNodeDetail.add("group");
         rowNode5.orientation = "row";
         rowNode5.alignChildren = ["left", "center"];
-        rowNode5.spacing = 8;
+        rowNode5.spacing = 6;
 
-        var chkNodeMutilated = rowNode5.add("checkbox", undefined, "\u6b20\u6b6f\u30fb\u9593\u6b20\u6b6f\u8eca");
-        var lblActiveTeeth = rowNode5.add("statictext", undefined, " \u6709\u52b9\u6b6f\u6570:");
-        var etActiveTeeth = rowNode5.add("edittext", undefined, "18");
-        etActiveTeeth.characters = 4;
-        var lblStartTooth = rowNode5.add("statictext", undefined, " \u958b\u59cb\u6b6f:");
-        var etStartTooth = rowNode5.add("edittext", undefined, "1");
-        etStartTooth.characters = 3;
-        var lblBlankRadius = rowNode5.add("statictext", undefined, " \u6b20\u6b6f\u533a\u9593:");
-        var ddBlankRadius = rowNode5.add("dropdownlist", undefined, [
-            "\u6b6f\u5e95\u5186 (df) [\u6a19\u6e96]",
-            "\u30d4\u30c3\u30c1\u5186 (d)",
-            "\u6b6f\u5148\u5186 (da) [\u30ed\u30c3\u30af\u9762]"
+        rowNode5.add("statictext", undefined, "\u52d5\u4f5c\u30e2\u30fc\u30c9:");
+        var ddIntermittentMode = rowNode5.add("dropdownlist", undefined, [
+            "\u901a\u5e38 (Normal)",
+            "\u6b20\u6b6f\u306e\u307f (Mutilated)",
+            "\u9593\u6b20\u30fb\u539f\u52d5 (Driver)",
+            "\u9593\u6b20\u30fb\u5f93\u52d5 (Driven)"
         ]);
-        ddBlankRadius.selection = 0;
+        ddIntermittentMode.selection = 0;
+
+        // Subgroup for Driver / Mutilated parameters
+        var grpMutDriver = rowNode5.add("group");
+        grpMutDriver.orientation = "row";
+        grpMutDriver.alignChildren = ["left", "center"];
+        grpMutDriver.spacing = 4;
+        grpMutDriver.visible = false;
+        grpMutDriver.add("statictext", undefined, " \u6709\u52b9\u6b6f:");
+        var etActiveTeeth = grpMutDriver.add("edittext", undefined, "2"); etActiveTeeth.characters = 3;
+        grpMutDriver.add("statictext", undefined, " \u958b\u59cb\u6b6f:");
+        var etStartTooth = grpMutDriver.add("edittext", undefined, "1"); etStartTooth.characters = 3;
+        var chkTipRelief = grpMutDriver.add("checkbox", undefined, "\u6b6f\u5148\u7de9\u548c(Tip Relief)"); chkTipRelief.value = true;
+
+        // Subgroup for Driven parameters
+        var grpMutDriven = rowNode5.add("group");
+        grpMutDriven.orientation = "row";
+        grpMutDriven.alignChildren = ["left", "center"];
+        grpMutDriven.spacing = 4;
+        grpMutDriven.visible = false;
+        grpMutDriven.add("statictext", undefined, " \u5206\u5272\u6570(n):");
+        var etDivisions = grpMutDriven.add("edittext", undefined, "4"); etDivisions.characters = 3;
+        grpMutDriven.add("statictext", undefined, " \u9001\u308a\u6b6f:");
+        var etMoveTeeth = grpMutDriven.add("edittext", undefined, "2"); etMoveTeeth.characters = 3;
+        grpMutDriven.add("statictext", undefined, " \u9699\u9593(mm):");
+        var etLockClearance = grpMutDriven.add("edittext", undefined, "0.15"); etLockClearance.characters = 4;
+
+        // Row 5b: Intermittent Structure (Coplanar vs Two-Layer) & Warning
+        var rowNode5b = pnlNodeDetail.add("group");
+        rowNode5b.orientation = "row";
+        rowNode5b.alignChildren = ["left", "center"];
+        rowNode5b.spacing = 8;
+        rowNode5b.visible = false;
+
+        rowNode5b.add("statictext", undefined, "\u69cb\u9020\u5f62\u5f0f:");
+        var rbStructCoplanar = rowNode5b.add("radiobutton", undefined, "\u540c\u4e00\u5e73\u9762 (1\u679a\u677f)");
+        var rbStructTwoLayer = rowNode5b.add("radiobutton", undefined, "2\u5c64\u5f0f (\u7a4d\u5c64\u30d7\u30ec\u30fc\u30c8)");
+        rbStructCoplanar.value = true;
+
+        var lblTwoLayerWarning = rowNode5b.add("statictext", undefined, "\u203b2\u5c64\u5f0f\u306f\u4ed6\u6bb5\u30ae\u30a2\u3068\u306e\u7acb\u4f53\u5e72\u6e09\u3092\u30d7\u30e9\u30b0\u30a4\u30f3\u5074\u3067\u4fdd\u8a3c\u3057\u307e\u305b\u3093");
+        lblTwoLayerWarning.visible = false;
+        try {
+            var redGfx = lblTwoLayerWarning.graphics;
+            redGfx.foregroundColor = redGfx.newPen(redGfx.PenType.SOLID_COLOR, [0.85, 0.0, 0.0, 1], 1);
+        } catch (eGfx) {}
 
         // Action Buttons Row
         var rowNodeBtns = pnlNodeDetail.add("group");
@@ -7181,6 +7246,7 @@ var DialogView = (function () {
         var btnAddSpur = rowNodeBtns.add("button", undefined, "+ \u5916\u6b6f\u8eca\u8ffd\u52a0");
         var btnAddInternal = rowNodeBtns.add("button", undefined, "+ \u5185\u6b6f\u8eca\u8ffd\u52a0");
         var btnAddRack = rowNodeBtns.add("button", undefined, "+ \u30e9\u30c3\u30af\u8ffd\u52a0");
+        var btnAddIntermittent = rowNodeBtns.add("button", undefined, "+ \u9593\u6b20\u6b6f\u8eca\u30da\u30a2\u8ffd\u52a0");
         var btnDeleteNode = rowNodeBtns.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
         var btnImportCSV = rowNodeBtns.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
 
@@ -7642,13 +7708,21 @@ var DialogView = (function () {
             }
 
             var teethStr = (nd.gearType === "RACK") ? ("L" + nd.z) : ("z" + nd.z);
-            if (nd.gearType === "SPUR" && nd.isMutilated && nd.activeTeeth < nd.z) {
+            var kindStr = nd.gearType;
+            if (nd.intermittentRole === "DRIVER") {
+                kindStr = "間欠(原)";
+                teethStr += " (act:" + (nd.activeTeeth || 2) + ")";
+            } else if (nd.intermittentRole === "DRIVEN") {
+                kindStr = "間欠(従)";
+                teethStr += " (n:" + (nd.divisions || 4) + "/mov:" + (nd.moveTeeth || 2) + ")";
+            } else if (nd.gearType === "SPUR" && nd.isMutilated && nd.activeTeeth < nd.z) {
+                kindStr = "欠歯平";
                 teethStr += " (\u6709\u52b9" + nd.activeTeeth + ")";
             }
 
             return {
                 id: nd.id,
-                kind: nd.gearType,
+                kind: kindStr,
                 stage: "L" + nd.stageIndex,
                 parent: nd.parentId ? nd.parentId : "-",
                 relation: nd.relationType === "COAXIAL" ? "同軸" : (nd.relationType === "ROOT" ? "ルート" : "噛合"),
@@ -7769,19 +7843,33 @@ var DialogView = (function () {
                 etNodeAlpha.text = String(nd.alphaDeg);
                 etNodeBacklash.text = String(nd.backlash);
 
-                chkNodeMutilated.value = !!nd.isMutilated;
-                etActiveTeeth.text = String(nd.activeTeeth !== undefined ? nd.activeTeeth : nd.z);
-                etStartTooth.text = String(nd.startTooth !== undefined ? nd.startTooth : 1);
-                if (nd.blankRadiusType === "pitch") ddBlankRadius.selection = 1;
-                else if (nd.blankRadiusType === "tip") ddBlankRadius.selection = 2;
-                else ddBlankRadius.selection = 0;
+                // Intermittent Mode synchronization
+                var intRole = nd.intermittentRole || "NONE";
+                if (intRole === "DRIVER") ddIntermittentMode.selection = 2;
+                else if (intRole === "DRIVEN") ddIntermittentMode.selection = 3;
+                else if (nd.isMutilated) ddIntermittentMode.selection = 1;
+                else ddIntermittentMode.selection = 0;
 
-                var isSpur = (nd.gearType === "SPUR");
-                chkNodeMutilated.enabled = isSpur;
-                var enableMut = isSpur && chkNodeMutilated.value;
-                etActiveTeeth.enabled = enableMut;
-                etStartTooth.enabled = enableMut;
-                ddBlankRadius.enabled = enableMut;
+                etActiveTeeth.text = String(nd.activeTeeth !== undefined ? nd.activeTeeth : 2);
+                etStartTooth.text = String(nd.startTooth !== undefined ? nd.startTooth : 1);
+                chkTipRelief.value = (nd.tipRelief !== false);
+
+                etDivisions.text = String(nd.divisions || 4);
+                etMoveTeeth.text = String(nd.moveTeeth || 2);
+                etLockClearance.text = String(nd.lockClearance !== undefined ? nd.lockClearance : 0.15);
+
+                var struct = nd.intermittentStructure || "coplanar";
+                if (struct === "two_layer") {
+                    rbStructTwoLayer.value = true;
+                    rbStructCoplanar.value = false;
+                    lblTwoLayerWarning.visible = true;
+                } else {
+                    rbStructCoplanar.value = true;
+                    rbStructTwoLayer.value = false;
+                    lblTwoLayerWarning.visible = false;
+                }
+
+                updateIntermittentControlsVisibility();
 
                 if (!nd.parentId || nd.relationType === "ROOT") {
                     ddNodeRelation.enabled = false;
@@ -7794,6 +7882,40 @@ var DialogView = (function () {
                 isUpdatingFields = prevLock;
             }
             updatePlacementRefLabel();
+        }
+
+        function updateIntermittentControlsVisibility() {
+            var isSpur = (ddNodeKind.selection && ddNodeKind.selection.index === 0);
+            ddIntermittentMode.enabled = isSpur;
+            if (!isSpur) {
+                grpMutDriver.visible = false;
+                grpMutDriven.visible = false;
+                rowNode5b.visible = false;
+                lblTwoLayerWarning.visible = false;
+                return;
+            }
+
+            var modeIdx = ddIntermittentMode.selection ? ddIntermittentMode.selection.index : 0;
+            if (modeIdx === 1 || modeIdx === 2) {
+                // Mutilated or Driver
+                grpMutDriver.visible = true;
+                grpMutDriven.visible = false;
+                chkTipRelief.visible = (modeIdx === 2);
+                rowNode5b.visible = (modeIdx === 2);
+                lblTwoLayerWarning.visible = (modeIdx === 2 && rbStructTwoLayer.value);
+            } else if (modeIdx === 3) {
+                // Driven
+                grpMutDriver.visible = false;
+                grpMutDriven.visible = true;
+                rowNode5b.visible = true;
+                lblTwoLayerWarning.visible = rbStructTwoLayer.value;
+            } else {
+                // Normal
+                grpMutDriver.visible = false;
+                grpMutDriven.visible = false;
+                rowNode5b.visible = false;
+                lblTwoLayerWarning.visible = false;
+            }
         }
 
         function saveFieldsToCurrentNode() {
@@ -7836,11 +7958,31 @@ var DialogView = (function () {
             nd.alphaDeg = parseFloat(etNodeAlpha.text) || 20.0;
             nd.backlash = parseFloat(etNodeBacklash.text) || 0.15;
 
-            nd.isMutilated = (nd.gearType === "SPUR") ? chkNodeMutilated.value : false;
-            nd.activeTeeth = parseInt(etActiveTeeth.text, 10) || nd.z;
+            var modeIdx = ddIntermittentMode.selection ? ddIntermittentMode.selection.index : 0;
+            if (modeIdx === 1) {
+                nd.isMutilated = true;
+                nd.intermittentRole = "NONE";
+            } else if (modeIdx === 2) {
+                nd.isMutilated = true;
+                nd.intermittentRole = "DRIVER";
+            } else if (modeIdx === 3) {
+                nd.isMutilated = true;
+                nd.intermittentRole = "DRIVEN";
+            } else {
+                nd.isMutilated = false;
+                nd.intermittentRole = "NONE";
+            }
+
+            nd.activeTeeth = parseInt(etActiveTeeth.text, 10) || 2;
             nd.startTooth = parseInt(etStartTooth.text, 10) || 1;
-            var bTypes = ["root", "pitch", "tip"];
-            nd.blankRadiusType = bTypes[ddBlankRadius.selection ? ddBlankRadius.selection.index : 0];
+            nd.tipRelief = chkTipRelief.value;
+
+            nd.divisions = parseInt(etDivisions.text, 10) || 4;
+            nd.moveTeeth = parseInt(etMoveTeeth.text, 10) || 2;
+            nd.lockClearance = parseFloat(etLockClearance.text) || 0.15;
+
+            nd.intermittentStructure = rbStructTwoLayer.value ? "two_layer" : "coplanar";
+            nd.blankRadiusType = (nd.intermittentRole === "DRIVER" && nd.intermittentStructure === "coplanar") ? "pitch" : "root";
 
             syncNodeProperties(nd);
         }
@@ -7868,21 +8010,24 @@ var DialogView = (function () {
         etNodeZ.onChanging = onFieldInputChanged;
         etNodeZ.onChange = onFieldInputChanged;
         ddNodeKind.onChange = function () {
-            var isSpur = (ddNodeKind.selection && ddNodeKind.selection.index === 0);
-            chkNodeMutilated.enabled = isSpur;
-            var enableMut = isSpur && chkNodeMutilated.value;
-            etActiveTeeth.enabled = enableMut;
-            etStartTooth.enabled = enableMut;
-            ddBlankRadius.enabled = enableMut;
+            updateIntermittentControlsVisibility();
             onFieldInputChanged();
         };
 
-        chkNodeMutilated.onClick = function () {
-            var isSpur = (ddNodeKind.selection && ddNodeKind.selection.index === 0);
-            var enableMut = isSpur && chkNodeMutilated.value;
-            etActiveTeeth.enabled = enableMut;
-            etStartTooth.enabled = enableMut;
-            ddBlankRadius.enabled = enableMut;
+        ddIntermittentMode.onChange = function () {
+            updateIntermittentControlsVisibility();
+            onFieldInputChanged();
+        };
+
+        chkTipRelief.onClick = onFieldInputChanged;
+
+        rbStructCoplanar.onClick = function () {
+            lblTwoLayerWarning.visible = false;
+            onFieldInputChanged();
+        };
+
+        rbStructTwoLayer.onClick = function () {
+            lblTwoLayerWarning.visible = true;
             onFieldInputChanged();
         };
 
@@ -7890,7 +8035,12 @@ var DialogView = (function () {
         etActiveTeeth.onChange = onFieldInputChanged;
         etStartTooth.onChanging = onFieldInputChanged;
         etStartTooth.onChange = onFieldInputChanged;
-        ddBlankRadius.onChange = onFieldInputChanged;
+        etDivisions.onChanging = onFieldInputChanged;
+        etDivisions.onChange = onFieldInputChanged;
+        etMoveTeeth.onChanging = onFieldInputChanged;
+        etMoveTeeth.onChange = onFieldInputChanged;
+        etLockClearance.onChanging = onFieldInputChanged;
+        etLockClearance.onChange = onFieldInputChanged;
         ddNodeParent.onChange = function () {
             if (isUpdatingFields) return;
             var prevLock = isUpdatingFields;
@@ -8066,6 +8216,75 @@ var DialogView = (function () {
             syncNodeProperties(newNode);
             trainNodes.push(newNode);
             refreshTrainList(newId);
+            updatePreview();
+        };
+
+        btnAddIntermittent.onClick = function () {
+            var mVal = parseFloat(etModule.text) || 2.0;
+            var aVal = parseFloat(etAlpha.text) || 20.0;
+            var bVal = parseFloat(etBacklash.text) || 0.15;
+            var sVal = parseFloat(etDefShaft.text) || 5.0;
+
+            var driverIdx = trainNodes.length + 1;
+            var driverId = "G" + driverIdx + "_Driver";
+            var driverNode = {
+                id: driverId,
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 24,
+                m: mVal,
+                alphaDeg: aVal,
+                backlash: bVal,
+                shaftDiameter: sVal,
+                shaftType: "丸穴",
+                parentId: null,
+                relationType: "ROOT",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: 1,
+                layerIndex: 1,
+                isMutilated: true,
+                intermittentRole: "DRIVER",
+                activeTeeth: 2,
+                tipRelief: true,
+                intermittentStructure: "coplanar",
+                blankRadiusType: "pitch",
+                x: 0
+            };
+            syncNodeProperties(driverNode);
+            trainNodes.push(driverNode);
+
+            var drivenIdx = trainNodes.length + 1;
+            var drivenId = "G" + drivenIdx + "_Driven";
+            var drivenNode = {
+                id: drivenId,
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 24,
+                m: mVal,
+                alphaDeg: aVal,
+                backlash: bVal,
+                shaftDiameter: sVal,
+                shaftType: "丸穴",
+                parentId: driverId,
+                relationType: "MESHING",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: 1,
+                layerIndex: 1,
+                isMutilated: true,
+                intermittentRole: "DRIVEN",
+                divisions: 4,
+                moveTeeth: 2,
+                lockClearance: 0.15,
+                intermittentStructure: "coplanar",
+                blankRadiusType: "root",
+                x: 0
+            };
+            syncNodeProperties(drivenNode);
+            trainNodes.push(drivenNode);
+
+            refreshTrainList(drivenId);
             updatePreview();
         };
 
@@ -9051,4 +9270,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.21');
+MainController.run('0.9.22');

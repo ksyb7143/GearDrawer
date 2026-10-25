@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Rack - Visual Verification for Rack & Pinion
- * Version: 0.9.21
+ * Version: 0.9.22
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */
@@ -4826,6 +4826,20 @@ var PathBuilder = (function () {
                 }
             }
 
+            // === STEP 4: Two-Layer Lock Plate (if present) ===
+            if (gearData.lockPlate && gearData.lockPlate.outerNodes && gearData.lockPlate.outerNodes.length > 0) {
+                var lockPlateGroup = gearGroup.groupItems.add();
+                lockPlateGroup.name = gearName + "_LockPlateLayer";
+                var lpPath = lockPlateGroup.pathItems.add();
+                lpPath.name = gearData.lockPlate.name || (gearName + "_LockPlate");
+                applyBezierNodes(lpPath, gearData.lockPlate.outerNodes, center, rotOffsetRad, MM_TO_PT);
+                lpPath.closed = true;
+                applyCutStyle(lpPath, cutStrokeWidth, cutColor);
+
+                var lpHole = drawShaftHoleItem(lockPlateGroup, center, gearData, rotOffsetRad, gearName + "_LockPlate", options);
+                if (lpHole) applyCutStyle(lpHole, cutStrokeWidth, cutColor);
+            }
+
         } else if (mode === "test_teeth") {
             // === 2. Individual Teeth Mode: Single tooth x z (independent paths) + root circle + shaft hole ===
             var teethGroup = gearGroup.groupItems.add();
@@ -4975,6 +4989,19 @@ var PathBuilder = (function () {
                 );
                 baseCircle.name = "BaseCircle_db" + gearData.baseDiameter.toFixed(1);
                 applyGuideStyle(baseCircle, guideStrokeWidth, guideColor, [2, 3]);
+            }
+
+            // 3. Intermittent Lock Arc Guide (if applicable)
+            if (gearData.intermittentRole && gearData.intermittentRole !== "NONE") {
+                var lr = (gearData.blankRadiusPt && gearData.blankRadiusPt > 0) ? gearData.blankRadiusPt : pr;
+                var lockCircle = guideGroup.pathItems.ellipse(
+                    center[1] + lr,
+                    center[0] - lr,
+                    lr * 2,
+                    lr * 2
+                );
+                lockCircle.name = "LockGuide_" + gearData.intermittentRole;
+                applyGuideStyle(lockCircle, guideStrokeWidth, guideColor, [1, 3]);
             }
 
             var crossLen = Math.min(pr * 0.4, 15);
