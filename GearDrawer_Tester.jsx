@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_Tester - Automatic Test Runner for Adobe Illustrator
- * Version: 0.9.25
+ * Version: 0.9.26
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -4394,6 +4394,59 @@ var PathBuilder = (function () {
         } catch (eItm) {}
     }
 
+    function isIsolationMode(doc) {
+        if (!doc) return false;
+        try {
+            var testLyr = doc.layers.add();
+            testLyr.remove();
+            return false;
+        } catch (e) {
+            var errStr = String(e.message || e);
+            if (errStr.indexOf("Isolation Mode") !== -1 || errStr.indexOf("synthetic layer") !== -1 || e.number === 9034) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    function ensureExitIsolationMode(doc) {
+        if (!doc) return true;
+        if (!isIsolationMode(doc)) return true;
+
+        // 1. Try native menu command (up to 3 times for nested groups)
+        for (var iter = 0; iter < 3; iter++) {
+            try {
+                app.executeMenuCommand("exitFocus");
+            } catch (eCmd) {
+                break;
+            }
+        }
+        if (!isIsolationMode(doc)) return true;
+
+        // 2. Try OS-level Escape keystroke (Windows / Mac)
+        try {
+            if (typeof $.os !== "undefined" && $.os.indexOf("Windows") !== -1) {
+                var vbs = new File(Folder.temp.fsName + "/gd_exit_iso_" + (new Date().getTime()) + ".vbs");
+                vbs.encoding = "ASCII";
+                if (vbs.open("w")) {
+                    vbs.writeln('Set Wsh = CreateObject("WScript.Shell")');
+                    vbs.writeln('Wsh.SendKeys "{ESC}"');
+                    vbs.close();
+                    vbs.execute();
+                    $.sleep(150);
+                    try { vbs.remove(); } catch (eRem) {}
+                }
+            } else if (typeof $.os !== "undefined" && $.os.indexOf("Mac") !== -1) {
+                try {
+                    app.doScript('tell application "System Events" to key code 53', ScriptLanguage.APPLESCRIPT_LANGUAGE);
+                    $.sleep(150);
+                } catch (eMac) {}
+            }
+        } catch (eOS) {}
+
+        return !isIsolationMode(doc);
+    }
+
     function getOrCreateLayer(doc, layerName, parentLayer) {
         if (parentLayer) {
             unlockAndShowLayer(parentLayer);
@@ -4407,8 +4460,29 @@ var PathBuilder = (function () {
             }
         }
         if (!targetLyr) {
-            targetLyr = container.add();
-            targetLyr.name = layerName;
+            try {
+                targetLyr = container.add();
+                targetLyr.name = layerName;
+            } catch (eAdd) {
+                var errStr = String(eAdd.message || eAdd);
+                if (errStr.indexOf("Isolation Mode") !== -1 || errStr.indexOf("synthetic layer") !== -1 || eAdd.number === 9034) {
+                    var exited = ensureExitIsolationMode(doc);
+                    if (exited) {
+                        targetLyr = container.add();
+                        targetLyr.name = layerName;
+                    } else {
+                        throw new Error("\u3010Illustrator\u306e\u7de8\u96c6\u30e2\u30fc\u30c9\uff08\u30a2\u30a4\u30bd\u30ec\u30fc\u30b7\u30e7\u30f3\u30e2\u30fc\u30c9\uff09\u3092\u89e3\u9664\u3057\u3066\u304f\u3060\u3055\u3044\u3011\n\n" +
+                            "\u73fe\u5728\u3001Illustrator\u4e0a\u3067\u30aa\u30d6\u30b8\u30a7\u30af\u30c8\u307e\u305f\u306f\u30b0\u30eb\u30fc\u30d7\u304c\u300c\u7de8\u96c6\u30e2\u30fc\u30c9\uff08\u5206\u96e2\u30fb\u30a2\u30a4\u30bd\u30ec\u30fc\u30b7\u30e7\u30f3\u30e2\u30fc\u30c9\uff09\u300d\u306b\u306a\u3063\u3066\u3044\u307e\u3059\u3002\n" +
+                            "Illustrator\u306e\u4ed5\u69d8\u4e0a\u3001\u3053\u306e\u72b6\u614b\u3067\u306f\u65b0\u898f\u30ec\u30a4\u30e4\u30fc\u306e\u4f5c\u6210\u304c\u7981\u6b62\u3055\u308c\u3066\u3044\u307e\u3059\u3002\n\n" +
+                            "\u3010\u89e3\u9664\u65b9\u6cd5\u3011\n" +
+                            "1. \u30ad\u30fc\u30dc\u30fc\u30c9\u306e\uff3bEsc\uff3d\u30ad\u30fc\u30921\u301c2\u56de\u62bc\u3059\n" +
+                            "   \uff08\u307e\u305f\u306f\u753b\u9762\u4e0a\u90e8\u306e\u30b0\u30ec\u30fc\u306e\u30d0\u30fc\u306b\u3042\u308b\u300c<\u300d\u3092\u30af\u30ea\u30c3\u30af\uff09\n" +
+                            "2. \u901a\u5e38\u306e\u7de8\u96c6\u753b\u9762\u306b\u623b\u3063\u305f\u3053\u3068\u3092\u78ba\u8a8d\u3057\u3001\u518d\u5ea6\u30ae\u30a2\u4f5c\u6210\u3092\u5b9f\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+                    }
+                } else {
+                    throw eAdd;
+                }
+            }
         }
 
         unlockAndShowLayer(targetLyr);
@@ -5919,6 +5993,8 @@ var PathBuilder = (function () {
 
     return {
         getOrCreateLayer: getOrCreateLayer,
+        isIsolationMode: isIsolationMode,
+        ensureExitIsolationMode: ensureExitIsolationMode,
         drawGear: drawGear,
         drawMeshingPair: drawMeshingPair,
         drawRack: drawRack,
