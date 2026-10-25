@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.22
+ * Version: 0.9.23
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -9270,4 +9270,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.22');
+MainController.run('0.9.23');
