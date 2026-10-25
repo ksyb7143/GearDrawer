@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.23
+ * Version: 0.9.24
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -7984,6 +7984,15 @@ var DialogView = (function () {
             nd.intermittentStructure = rbStructTwoLayer.value ? "two_layer" : "coplanar";
             nd.blankRadiusType = (nd.intermittentRole === "DRIVER" && nd.intermittentStructure === "coplanar") ? "pitch" : "root";
 
+            // Enforce kinematic constraint z2 = S * k for coplanar intermittent indexing
+            if (nd.intermittentRole === "DRIVEN" && nd.intermittentStructure === "coplanar") {
+                var expectedZ = nd.divisions * nd.moveTeeth;
+                if (expectedZ >= 4 && nd.z !== expectedZ) {
+                    nd.z = expectedZ;
+                    etNodeZ.text = String(expectedZ);
+                }
+            }
+
             syncNodeProperties(nd);
         }
 
@@ -8220,7 +8229,8 @@ var DialogView = (function () {
         };
 
         btnAddIntermittent.onClick = function () {
-            var mVal = parseFloat(etModule.text) || 2.0;
+            var mVal = parseFloat(etModule.text) || 3.0;
+            if (mVal < 2.0) mVal = 3.0; // Optimal module for laser cut intermittent indexing
             var aVal = parseFloat(etAlpha.text) || 20.0;
             var bVal = parseFloat(etBacklash.text) || 0.15;
             var sVal = parseFloat(etDefShaft.text) || 5.0;
@@ -8231,7 +8241,7 @@ var DialogView = (function () {
                 id: driverId,
                 kind: "SPUR",
                 gearType: "SPUR",
-                z: 24,
+                z: 8,
                 m: mVal,
                 alphaDeg: aVal,
                 backlash: bVal,
@@ -8260,7 +8270,7 @@ var DialogView = (function () {
                 id: drivenId,
                 kind: "SPUR",
                 gearType: "SPUR",
-                z: 24,
+                z: 8,
                 m: mVal,
                 alphaDeg: aVal,
                 backlash: bVal,
@@ -9270,4 +9280,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.23');
+MainController.run('0.9.24');
