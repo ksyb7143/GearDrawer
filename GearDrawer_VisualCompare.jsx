@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare - Visual Overlay & Verification for Adobe Illustrator
- * Version: 0.9.28
+ * Version: 0.9.29
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -1715,10 +1715,12 @@ function logWarn(category, msg, data) {
             } else if (isIntermittentDriven) {
                 var R_drum = (m * driverZ) / 2.0;
                 var R_shoe = R_drum + lockClearance;
-                var concavePocket = createConcaveLockArcNodes(centerDist, R_shoe, rp);
+                var R_star = ra;
+                var concavePocket = createConcaveLockArcNodes(centerDist, R_shoe, R_star);
                 var pocketHalfAngle = concavePocket.deltaAngle || 0;
                 var theta_seg = (2.0 * Math.PI) / divisions;
                 var lpNodes = [];
+                var lastIncomingHandle = null;
 
                 for (var s = 0; s < divisions; s++) {
                     var dwellCenterAngle = s * theta_seg;
@@ -1733,46 +1735,75 @@ function logWarn(category, msg, data) {
                     }
 
                     if (concavePocket.length >= 3 && pocketHalfAngle > 0) {
-                        var p0 = concavePocket[0]; // Entry at rp
-                        var pMid = concavePocket[1]; // Mid
-                        var p2 = concavePocket[2]; // Exit at rp
+                        var p0 = concavePocket[0]; // Entry at R_star
+                        var pMid = concavePocket[1]; // Mid at deepest point
+                        var p2 = concavePocket[2]; // Exit at R_star
+
+                        var p0Anchor = tfLpShoe(p0.anchor);
+                        var p0Right = tfLpShoe(p0.rightDirection);
+                        var p0Left = (lastIncomingHandle !== null) ? lastIncomingHandle : tfLpShoe(p0.anchor);
+
                         lpNodes.push({
-                            anchor: tfLpShoe(p0.anchor),
-                            leftDirection: tfLpShoe(p0.anchor),
-                            rightDirection: tfLpShoe(p0.rightDirection),
+                            anchor: p0Anchor,
+                            leftDirection: p0Left,
+                            rightDirection: p0Right,
                             pointType: "CORNER"
                         });
+
                         lpNodes.push({
                             anchor: tfLpShoe(pMid.anchor),
                             leftDirection: tfLpShoe(pMid.leftDirection),
                             rightDirection: tfLpShoe(pMid.rightDirection),
                             pointType: "SMOOTH"
                         });
+
+                        var p2Anchor = tfLpShoe(p2.anchor);
+                        var p2Left = tfLpShoe(p2.leftDirection);
+                        var p2Right = tfLpShoe(p2.anchor);
+
                         lpNodes.push({
-                            anchor: tfLpShoe(p2.anchor),
-                            leftDirection: tfLpShoe(p2.leftDirection),
-                            rightDirection: tfLpShoe(p2.anchor),
+                            anchor: p2Anchor,
+                            leftDirection: p2Left,
+                            rightDirection: p2Right,
                             pointType: "CORNER"
                         });
 
                         var pEndAngle = dwellCenterAngle + pocketHalfAngle;
                         var pStartAngleNext = (s + 1) * theta_seg - pocketHalfAngle;
-                        var arcConn = createArcBezierNodes(rp, pEndAngle, pStartAngleNext);
-                        for (var ac = 1; ac < arcConn.length - 1; ac++) {
-                            lpNodes.push({
-                                anchor: [Math.round(arcConn[ac].anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].anchor[1] * MM_TO_PT * 10000) / 10000],
-                                leftDirection: [Math.round(arcConn[ac].leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].leftDirection[1] * MM_TO_PT * 10000) / 10000],
-                                rightDirection: [Math.round(arcConn[ac].rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].rightDirection[1] * MM_TO_PT * 10000) / 10000],
-                                pointType: "SMOOTH"
-                            });
+                        var arcConn = createArcBezierNodes(R_star, pEndAngle, pStartAngleNext);
+
+                        if (arcConn.length >= 2) {
+                            lpNodes[lpNodes.length - 1].rightDirection = [
+                                Math.round(arcConn[0].rightDirection[0] * MM_TO_PT * 10000) / 10000,
+                                Math.round(arcConn[0].rightDirection[1] * MM_TO_PT * 10000) / 10000
+                            ];
+
+                            for (var ac = 1; ac < arcConn.length - 1; ac++) {
+                                lpNodes.push({
+                                    anchor: [Math.round(arcConn[ac].anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].anchor[1] * MM_TO_PT * 10000) / 10000],
+                                    leftDirection: [Math.round(arcConn[ac].leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].leftDirection[1] * MM_TO_PT * 10000) / 10000],
+                                    rightDirection: [Math.round(arcConn[ac].rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcConn[ac].rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                                    pointType: "SMOOTH"
+                                });
+                            }
+
+                            lastIncomingHandle = [
+                                Math.round(arcConn[arcConn.length - 1].leftDirection[0] * MM_TO_PT * 10000) / 10000,
+                                Math.round(arcConn[arcConn.length - 1].leftDirection[1] * MM_TO_PT * 10000) / 10000
+                            ];
                         }
                     }
                 }
+
+                if (lastIncomingHandle !== null && lpNodes.length > 0) {
+                    lpNodes[0].leftDirection = lastIncomingHandle;
+                }
+
                 lockPlate = {
                     name: "LockStar_Driven",
                     outerNodes: lpNodes,
                     shaftHole: shaftHole,
-                    radiusMm: rp
+                    radiusMm: R_star
                 };
             }
         }
@@ -5421,7 +5452,7 @@ var PathBuilder = (function () {
                 lockPlateGroup.name = gearName + "_LockPlateLayer";
                 var lpPath = lockPlateGroup.pathItems.add();
                 lpPath.name = gearData.lockPlate.name || (gearName + "_LockPlate");
-                applyBezierNodes(lpPath, gearData.lockPlate.outerNodes, center, rotOffsetRad, MM_TO_PT);
+                applyBezierNodes(lpPath, gearData.lockPlate.outerNodes, center, rotOffsetRad, 1.0);
                 lpPath.closed = true;
                 applyCutStyle(lpPath, cutStrokeWidth, cutColor);
 
