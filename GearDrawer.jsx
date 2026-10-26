@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.27
+ * Version: 0.9.28
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -1218,220 +1218,106 @@ function logWarn(category, msg, data) {
 
         if (isIntermittentDriven) {
             // === Intermittent Driven Gear Outer Bezier Loop ===
-            var driverZ = params.driverZ ? parseInt(params.driverZ, 10) : z;
-            var centerDist = params.centerDistance ? parseFloat(params.centerDistance) : ((m * (z + driverZ)) / 2.0);
-            var R_drum = (m * driverZ) / 2.0;
-            var R_shoe = R_drum + lockClearance;
+            // In both coplanar and two-layer setups, the gear layer consists of divisions sectors.
+            // Each sector has moveTeeth active involute teeth.
+            // If divisions * moveTeeth === z, the gear has teeth all around (full gear meshing).
+            // If divisions * moveTeeth < z, the space between sector exit and next sector entry is
+            // connected smoothly by the root circle (rf), identically to mutilated driver teeth.
+            // In two-layer mode, the separate star lock shoe (lpNodes) is exported to the _LockPlate layer.
+            var theta_seg = (2.0 * Math.PI) / divisions;
+            var isFullTeeth = (divisions * moveTeeth === z);
 
-            if (intermittentStructure === "coplanar") {
-                // Coplanar: Outer loop consists of divisions sectors.
-                // Each sector has moveTeeth active teeth + 1 concave locking shoe pocket.
-                // Progression is strictly CCW: Active teeth -> Root bridge 1 -> Step up -> Concave pocket -> Step down -> Root bridge 2.
-                var theta_seg = (2.0 * Math.PI) / divisions;
-                var concavePocket = createConcaveLockArcNodes(centerDist, R_shoe, ra);
-                var pocketHalfAngle = concavePocket.deltaAngle || 0;
+            for (var s = 0; s < divisions; s++) {
+                var segStartAngle = s * theta_seg;
 
-                for (var s = 0; s < divisions; s++) {
-                    var segStartAngle = s * theta_seg;
+                // 1. Add active teeth for this sector (moveTeeth)
+                for (var t = 0; t < moveTeeth; t++) {
+                    var toothRot = segStartAngle + t * toothPitchAngle;
+                    var cosR = Math.cos(toothRot);
+                    var sinR = Math.sin(toothRot);
 
-                    // 1. Add active teeth for this sector (moveTeeth)
-                    for (var t = 0; t < moveTeeth; t++) {
-                        var toothRot = segStartAngle + t * toothPitchAngle;
-                        var cosR = Math.cos(toothRot);
-                        var sinR = Math.sin(toothRot);
-
-                        function tfPtDriven(pt) {
-                            var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
-                            var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
-                            return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
-                        }
-
-                        var tNodes = [];
-                        for (var n = 0; n < singleToothNodes.length; n++) {
-                            var nd = singleToothNodes[n];
-                            tNodes.push({
-                                anchor: tfPtDriven(nd.anchor),
-                                leftDirection: tfPtDriven(nd.leftDirection),
-                                rightDirection: tfPtDriven(nd.rightDirection),
-                                pointType: nd.pointType
-                            });
-                        }
-
-                        if (!hasFlatRoot) {
-                            tNodes[0].pointType = "CORNER";
-                            tNodes[tNodes.length - 1].pointType = "CORNER";
-                        }
-
-                        var curEndTh = toothRot + thRoot;
-                        var curStartTh = toothRot - thRoot;
-                        var rEndPt = tfPtDriven([pRightRoot.x, pRightRoot.y]);
-                        var lStartPt = tfPtDriven([pRightRoot.x, -pRightRoot.y]);
-
-                        if (t < moveTeeth - 1) {
-                            tNodes[tNodes.length - 1].rightDirection = [
-                                Math.round((rEndPt[0] - L_root * Math.sin(curEndTh) * MM_TO_PT) * 10000) / 10000,
-                                Math.round((rEndPt[1] + L_root * Math.cos(curEndTh) * MM_TO_PT) * 10000) / 10000
-                            ];
-                            tNodes[0].leftDirection = [
-                                Math.round((lStartPt[0] + L_root * Math.sin(curStartTh) * MM_TO_PT) * 10000) / 10000,
-                                Math.round((lStartPt[1] - L_root * Math.cos(curStartTh) * MM_TO_PT) * 10000) / 10000
-                            ];
-                        }
-
-                        for (var n = 0; n < tNodes.length; n++) {
-                            outerNodes.push(tNodes[n]);
-                        }
-                    }
-
-                    // 2. Add concave locking pocket in the dwell section
-                    var teethEndAngle = segStartAngle + (moveTeeth - 1) * toothPitchAngle;
-                    var nextSegStartAngle = (s + 1) * theta_seg;
-
-                    var exitTh = teethEndAngle + thRoot;
-                    var entryThNext = nextSegStartAngle - thRoot;
-
-                    // Ensure dwell center angle is centered between teeth exit and next tooth entry
-                    var freeSpanStart = exitTh;
-                    var freeSpanEnd = entryThNext;
-                    var freeSpan = freeSpanEnd - freeSpanStart;
-                    while (freeSpan < 0) freeSpan += 2.0 * Math.PI;
-
-                    var pocketSpan = 2.0 * pocketHalfAngle;
-                    var effectivePocketHalf = pocketHalfAngle;
-                    if (pocketSpan > freeSpan - 0.04) {
-                        effectivePocketHalf = Math.max(0.02, (freeSpan - 0.04) / 2.0);
-                    }
-
-                    var dwellCenterAngle = freeSpanStart + freeSpan / 2.0;
-                    var pEntryTh = dwellCenterAngle - effectivePocketHalf;
-                    var pExitTh = dwellCenterAngle + effectivePocketHalf;
-
-                    var shoeRot = dwellCenterAngle + Math.PI;
-                    var cosS = Math.cos(shoeRot);
-                    var sinS = Math.sin(shoeRot);
-
-                    function tfShoe(pt) {
-                        var rx = (pt[0] * cosS - pt[1] * sinS) * MM_TO_PT;
-                        var ry = (pt[0] * sinS + pt[1] * cosS) * MM_TO_PT;
+                    function tfPtDriven(pt) {
+                        var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
+                        var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
                         return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
                     }
 
-                    if (concavePocket.length >= 3 && effectivePocketHalf > 0) {
-                        // Bridge 1: Root circle arc from last active tooth root to pocket entry angle
-                        var bridge1 = (pEntryTh > exitTh + 0.001) ? createArcBezierNodes(rf, exitTh, pEntryTh) : [];
-                        if (bridge1.length > 0) {
-                            var lastActiveNode = outerNodes[outerNodes.length - 1];
-                            lastActiveNode.rightDirection = [
-                                Math.round(bridge1[0].rightDirection[0] * MM_TO_PT * 10000) / 10000,
-                                Math.round(bridge1[0].rightDirection[1] * MM_TO_PT * 10000) / 10000
-                            ];
-                            for (var b = 1; b < bridge1.length; b++) {
-                                var bNode = bridge1[b];
-                                outerNodes.push({
-                                    anchor: [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000],
-                                    leftDirection: [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000],
-                                    rightDirection: [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000],
-                                    pointType: (b === bridge1.length - 1) ? "CORNER" : "SMOOTH"
-                                });
-                            }
-                            // Radial step-up to pocket entry at ra: outgoing handle of root point must be 0
-                            var rootEntryNode = outerNodes[outerNodes.length - 1];
-                            rootEntryNode.pointType = "CORNER";
-                            rootEntryNode.rightDirection = [rootEntryNode.anchor[0], rootEntryNode.anchor[1]];
-                        } else {
-                            var lastActiveNode = outerNodes[outerNodes.length - 1];
-                            lastActiveNode.pointType = "CORNER";
-                            lastActiveNode.rightDirection = [lastActiveNode.anchor[0], lastActiveNode.anchor[1]];
-                        }
-
-                        // Add concave pocket nodes (Entry [0] at ra -> Mid [1] at rp2-clearance -> Exit [2] at ra)
-                        var p0 = concavePocket[0]; // Entry at ra
-                        var pMid = concavePocket[1]; // Mid at deepest dwell point
-                        var p2 = concavePocket[2]; // Exit at ra
-
-                        // Pocket Entry at ra (CORNER from radial step wall)
-                        outerNodes.push({
-                            anchor: tfShoe(p0.anchor),
-                            leftDirection: tfShoe(p0.anchor),
-                            rightDirection: tfShoe(p0.rightDirection),
-                            pointType: "CORNER"
+                    var tNodes = [];
+                    for (var n = 0; n < singleToothNodes.length; n++) {
+                        var nd = singleToothNodes[n];
+                        tNodes.push({
+                            anchor: tfPtDriven(nd.anchor),
+                            leftDirection: tfPtDriven(nd.leftDirection),
+                            rightDirection: tfPtDriven(nd.rightDirection),
+                            pointType: nd.pointType
                         });
-                        // Pocket Mid (SMOOTH concave arc)
-                        outerNodes.push({
-                            anchor: tfShoe(pMid.anchor),
-                            leftDirection: tfShoe(pMid.leftDirection),
-                            rightDirection: tfShoe(pMid.rightDirection),
-                            pointType: "SMOOTH"
-                        });
-                        // Pocket Exit at ra (CORNER to radial step wall)
-                        outerNodes.push({
-                            anchor: tfShoe(p2.anchor),
-                            leftDirection: tfShoe(p2.leftDirection),
-                            rightDirection: tfShoe(p2.anchor),
-                            pointType: "CORNER"
-                        });
+                    }
 
-                        // Bridge 2: Radial step down to root circle and arc towards next tooth root
-                        var bridge2 = (entryThNext > pExitTh + 0.001) ? createArcBezierNodes(rf, pExitTh, entryThNext) : [];
-                        if (bridge2.length > 0) {
-                            for (var b = 0; b < bridge2.length - 1; b++) {
-                                var bNode = bridge2[b];
-                                var ptAnchor = [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000];
-                                var ptLeft = [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000];
-                                var ptRight = [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000];
-                                if (b === 0) {
-                                    // Step down from pocket exit: incoming handle must be 0
-                                    ptLeft = [ptAnchor[0], ptAnchor[1]];
-                                }
-                                outerNodes.push({
-                                    anchor: ptAnchor,
-                                    leftDirection: ptLeft,
-                                    rightDirection: ptRight,
-                                    pointType: (b === 0) ? "CORNER" : "SMOOTH"
-                                });
-                            }
-                            var lastBridgeNode = outerNodes[outerNodes.length - 1];
-                            lastBridgeNode.rightDirection = [
-                                Math.round(bridge2[bridge2.length - 1].rightDirection[0] * MM_TO_PT * 10000) / 10000,
-                                Math.round(bridge2[bridge2.length - 1].rightDirection[1] * MM_TO_PT * 10000) / 10000
-                            ];
-                        }
+                    if (!hasFlatRoot) {
+                        tNodes[0].pointType = "CORNER";
+                        tNodes[tNodes.length - 1].pointType = "CORNER";
+                    }
+
+                    var curEndTh = toothRot + thRoot;
+                    var curStartTh = toothRot - thRoot;
+                    var rEndPt = tfPtDriven([pRightRoot.x, pRightRoot.y]);
+                    var lStartPt = tfPtDriven([pRightRoot.x, -pRightRoot.y]);
+
+                    var isConnectedToNext = (t < moveTeeth - 1) || isFullTeeth;
+
+                    if (isConnectedToNext) {
+                        tNodes[tNodes.length - 1].rightDirection = [
+                            Math.round((rEndPt[0] - L_root * Math.sin(curEndTh) * MM_TO_PT) * 10000) / 10000,
+                            Math.round((rEndPt[1] + L_root * Math.cos(curEndTh) * MM_TO_PT) * 10000) / 10000
+                        ];
+                        tNodes[0].leftDirection = [
+                            Math.round((lStartPt[0] + L_root * Math.sin(curStartTh) * MM_TO_PT) * 10000) / 10000,
+                            Math.round((lStartPt[1] - L_root * Math.cos(curStartTh) * MM_TO_PT) * 10000) / 10000
+                        ];
+                    }
+
+                    for (var n = 0; n < tNodes.length; n++) {
+                        outerNodes.push(tNodes[n]);
                     }
                 }
-            } else {
-                // Two-layer Driven: Gear layer with moveTeeth active teeth per sector, bridged by root circle
-                var theta_seg = (2.0 * Math.PI) / divisions;
-                for (var s = 0; s < divisions; s++) {
-                    var segStartAngle = s * theta_seg;
-                    for (var t = 0; t < moveTeeth; t++) {
-                        var toothRot = segStartAngle + t * toothPitchAngle;
-                        var cosR = Math.cos(toothRot);
-                        var sinR = Math.sin(toothRot);
-                        function tfPtD(pt) {
-                            var rx = (pt[0] * cosR - pt[1] * sinR) * MM_TO_PT;
-                            var ry = (pt[0] * sinR + pt[1] * cosR) * MM_TO_PT;
-                            return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
-                        }
-                        for (var n = 0; n < singleToothNodes.length; n++) {
+
+                // 2. Connect to next sector if there is an empty gap (divisions * moveTeeth < z)
+                if (!isFullTeeth) {
+                    var teethEndAngle = segStartAngle + (moveTeeth - 1) * toothPitchAngle;
+                    var nextSegStartAngle = (s + 1) * theta_seg;
+                    var exitTh = teethEndAngle + thRoot;
+                    var entryThNext = nextSegStartAngle - thRoot;
+
+                    var bridge = createArcBezierNodes(rf, exitTh, entryThNext);
+                    if (bridge.length > 0) {
+                        var lastActiveNode = outerNodes[outerNodes.length - 1];
+                        lastActiveNode.rightDirection = [
+                            Math.round(bridge[0].rightDirection[0] * MM_TO_PT * 10000) / 10000,
+                            Math.round(bridge[0].rightDirection[1] * MM_TO_PT * 10000) / 10000
+                        ];
+                        for (var b = 1; b < bridge.length - 1; b++) {
+                            var bNode = bridge[b];
                             outerNodes.push({
-                                anchor: tfPtD(singleToothNodes[n].anchor),
-                                leftDirection: tfPtD(singleToothNodes[n].leftDirection),
-                                rightDirection: tfPtD(singleToothNodes[n].rightDirection),
-                                pointType: singleToothNodes[n].pointType
+                                anchor: [Math.round(bNode.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.anchor[1] * MM_TO_PT * 10000) / 10000],
+                                leftDirection: [Math.round(bNode.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.leftDirection[1] * MM_TO_PT * 10000) / 10000],
+                                rightDirection: [Math.round(bNode.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(bNode.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                                pointType: "SMOOTH"
                             });
                         }
                     }
-                    var exitTh = segStartAngle + (moveTeeth - 1) * toothPitchAngle + thRoot;
-                    var entryTh = (s + 1) * theta_seg - thRoot;
-                    var arcB = createArcBezierNodes(rf, exitTh, entryTh);
-                    for (var ab = 1; ab < arcB.length - 1; ab++) {
-                        outerNodes.push({
-                            anchor: [Math.round(arcB[ab].anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(arcB[ab].anchor[1] * MM_TO_PT * 10000) / 10000],
-                            leftDirection: [Math.round(arcB[ab].leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcB[ab].leftDirection[1] * MM_TO_PT * 10000) / 10000],
-                            rightDirection: [Math.round(arcB[ab].rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(arcB[ab].rightDirection[1] * MM_TO_PT * 10000) / 10000],
-                            pointType: "SMOOTH"
-                        });
-                    }
+                }
+            }
+
+            // Close final bridge to tooth 0 leftDirection if !isFullTeeth
+            if (!isFullTeeth && outerNodes.length > 0) {
+                var lastExitTh = (divisions - 1) * theta_seg + (moveTeeth - 1) * toothPitchAngle + thRoot;
+                var firstEntryTh = 2.0 * Math.PI - thRoot;
+                var finalBridge = createArcBezierNodes(rf, lastExitTh, 2.0 * Math.PI - thRoot);
+                if (finalBridge.length > 0) {
+                    outerNodes[0].leftDirection = [
+                        Math.round(finalBridge[finalBridge.length - 1].leftDirection[0] * MM_TO_PT * 10000) / 10000,
+                        Math.round(finalBridge[finalBridge.length - 1].leftDirection[1] * MM_TO_PT * 10000) / 10000
+                    ];
                 }
             }
         } else if (!isMutilated || activeTeeth >= z) {
@@ -10253,4 +10139,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.27');
+MainController.run('0.9.28');
