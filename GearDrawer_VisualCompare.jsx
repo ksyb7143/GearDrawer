@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare - Visual Overlay & Verification for Adobe Illustrator
- * Version: 0.9.30
+ * Version: 0.9.31
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -1181,7 +1181,7 @@ function logWarn(category, msg, data) {
         var intermittentStructure = params.intermittentStructure || (params.intermittent && params.intermittent.structure) || "coplanar";
         var lockClearance = (params.lockClearance !== undefined) ? parseFloat(params.lockClearance) : 0.15;
         if (isNaN(lockClearance)) lockClearance = 0.15;
-        var tipRelief = (params.tipRelief !== undefined) ? !!params.tipRelief : true;
+        var tipRelief = (params.tipRelief !== undefined) ? !!params.tipRelief : false;
         var divisions = (params.divisions !== undefined) ? parseInt(params.divisions, 10) : 4;
         if (isNaN(divisions) || divisions < 2) divisions = 4;
         var moveTeeth = (params.moveTeeth !== undefined) ? parseInt(params.moveTeeth, 10) : 2;
@@ -1389,6 +1389,48 @@ function logWarn(category, msg, data) {
             // Generate blank bridging arc nodes (in mm)
             var blankArcNodes = createArcBezierNodes(R_blank, exitTh, entryTh);
 
+            // Precompute mathematically exact shortened tooth for tip relief (Short Addendum Tooth)
+            var relievedToothNodes = null;
+            if (isIntermittentDriver && tipRelief && !params._isReliefRecursion) {
+                var daRelieved = da - (0.5 * m); // ra' = ra - 0.25 * m
+                var relGear = calculateSpurGear({
+                    m: m,
+                    z: z,
+                    x: x,
+                    alphaDeg: alphaDeg,
+                    backlash: backlash,
+                    useFillet: useFillet,
+                    rcFactor: rcFactor,
+                    pathQuality: pathQuality,
+                    da: daRelieved,
+                    df: df,
+                    isMutilated: false,
+                    _isReliefRecursion: true
+                });
+                relievedToothNodes = relGear.singleToothNodes;
+            }
+
+            // Precompute mathematically exact shortened tooth for tip relief (Short Addendum Tooth)
+            var relievedToothNodes = null;
+            if (isIntermittentDriver && tipRelief && !params._isReliefRecursion) {
+                var daRelieved = da - (0.5 * m); // ra' = ra - 0.25 * m
+                var relGear = calculateSpurGear({
+                    m: m,
+                    z: z,
+                    x: x,
+                    alphaDeg: alphaDeg,
+                    backlash: backlash,
+                    useFillet: useFillet,
+                    rcFactor: rcFactor,
+                    pathQuality: pathQuality,
+                    da: daRelieved,
+                    df: df,
+                    isMutilated: false,
+                    _isReliefRecursion: true
+                });
+                relievedToothNodes = relGear.singleToothNodes;
+            }
+
             for (var step = 0; step < activeTeeth; step++) {
                 var t = (startIdx + step) % z;
                 var rot = t * toothPitchAngle;
@@ -1402,28 +1444,17 @@ function logWarn(category, msg, data) {
                 }
 
                 var tNodes = [];
-                var isTipReliefTooth = (isIntermittentDriver && tipRelief && step === 0);
-                for (var n = 0; n < singleToothNodes.length; n++) {
-                    var nd = singleToothNodes[n];
-                    if (isTipReliefTooth && (n >= 3 && n <= 5)) {
-                        var reliefFactor = (ra - 0.25 * m) / ra;
-                        var anc = [nd.anchor[0] * reliefFactor, nd.anchor[1] * reliefFactor];
-                        var lDir = [nd.leftDirection[0] * reliefFactor, nd.leftDirection[1] * reliefFactor];
-                        var rDir = [nd.rightDirection[0] * reliefFactor, nd.rightDirection[1] * reliefFactor];
-                        tNodes.push({
-                            anchor: tfPtM(anc),
-                            leftDirection: tfPtM(lDir),
-                            rightDirection: tfPtM(rDir),
-                            pointType: nd.pointType
-                        });
-                    } else {
-                        tNodes.push({
-                            anchor: tfPtM(nd.anchor),
-                            leftDirection: tfPtM(nd.leftDirection),
-                            rightDirection: tfPtM(nd.rightDirection),
-                            pointType: nd.pointType
-                        });
-                    }
+                var isTipReliefTooth = (isIntermittentDriver && tipRelief && step === 0 && relievedToothNodes);
+                var srcToothNodes = isTipReliefTooth ? relievedToothNodes : singleToothNodes;
+
+                for (var n = 0; n < srcToothNodes.length; n++) {
+                    var nd = srcToothNodes[n];
+                    tNodes.push({
+                        anchor: tfPtM(nd.anchor),
+                        leftDirection: tfPtM(nd.leftDirection),
+                        rightDirection: tfPtM(nd.rightDirection),
+                        pointType: nd.pointType
+                    });
                 }
 
                 if (!hasFlatRoot) {
@@ -4219,7 +4250,7 @@ function logWarn(category, msg, data) {
                 divisions: (n.divisions !== undefined) ? parseInt(n.divisions, 10) : 4,
                 moveTeeth: (n.moveTeeth !== undefined) ? parseInt(n.moveTeeth, 10) : 2,
                 lockClearance: (n.lockClearance !== undefined) ? parseFloat(n.lockClearance) : 0.15,
-                tipRelief: (n.tipRelief !== undefined) ? !!n.tipRelief : true,
+                tipRelief: (n.tipRelief !== undefined) ? !!n.tipRelief : false,
                 driverZ: n.driverZ || null,
                 drivenZ: n.drivenZ || null,
                 activeTeeth: (n.activeTeeth !== undefined) ? parseInt(n.activeTeeth, 10) : zVal,
@@ -4788,7 +4819,7 @@ function logWarn(category, msg, data) {
         var angleDeg = (spec.angleDeg !== undefined) ? spec.angleDeg : 0.0;
         var structure = spec.intermittentStructure || spec.structure || "coplanar";
         var lockClearance = (spec.lockClearance !== undefined) ? spec.lockClearance : 0.15;
-        var tipRelief = (spec.tipRelief !== false);
+        var tipRelief = !!spec.tipRelief;
         var shaft1 = (spec.shaftDiameter1 !== undefined) ? spec.shaftDiameter1 : 5.0;
         var shaft2 = (spec.shaftDiameter2 !== undefined) ? spec.shaftDiameter2 : 5.0;
         var shaftType1 = spec.shaftType1 || "丸穴";
