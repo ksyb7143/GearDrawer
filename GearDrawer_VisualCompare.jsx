@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare - Visual Overlay & Verification for Adobe Illustrator
- * Version: 0.9.29
+ * Version: 0.9.30
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -1667,7 +1667,16 @@ function logWarn(category, msg, data) {
                     var th_cres = Math.atan2(y_cres, x_cres);
                     var cres_phi = Math.atan2(y_cres, centerDist - x_cres);
                     var L_cres = (4.0 / 3.0) * Math.tan(cres_phi / 4.0) * R_cres;
-                    var lpNodes = [];
+                    var tau1 = (2.0 * Math.PI) / z;
+                    var crescentCenterAngle = ((activeTeeth - 1) * tau1) / 2.0;
+                    var cosA = Math.cos(crescentCenterAngle);
+                    var sinA = Math.sin(crescentCenterAngle);
+
+                    function rotLpPt(pt) {
+                        var rx = (pt[0] * cosA - pt[1] * sinA) * MM_TO_PT;
+                        var ry = (pt[0] * sinA + pt[1] * cosA) * MM_TO_PT;
+                        return [Math.round(rx * 10000) / 10000, Math.round(ry * 10000) / 10000];
+                    }
 
                     var cp0 = [centerDist - R_cres * Math.cos(-cres_phi), R_cres * Math.sin(-cres_phi)];
                     var ct0 = [Math.sin(-cres_phi), Math.cos(-cres_phi)];
@@ -1676,22 +1685,24 @@ function logWarn(category, msg, data) {
                     var cp2 = [centerDist - R_cres * Math.cos(cres_phi), R_cres * Math.sin(cres_phi)];
                     var ct2 = [Math.sin(cres_phi), Math.cos(cres_phi)];
 
+                    var lpNodes = [];
+
                     lpNodes.push({
-                        anchor: [Math.round(cp0[0] * MM_TO_PT * 10000) / 10000, Math.round(cp0[1] * MM_TO_PT * 10000) / 10000],
-                        leftDirection: [Math.round(cp0[0] * MM_TO_PT * 10000) / 10000, Math.round(cp0[1] * MM_TO_PT * 10000) / 10000],
-                        rightDirection: [Math.round((cp0[0] + L_cres * ct0[0]) * MM_TO_PT * 10000) / 10000, Math.round((cp0[1] + L_cres * ct0[1]) * MM_TO_PT * 10000) / 10000],
+                        anchor: rotLpPt(cp0),
+                        leftDirection: rotLpPt(cp0),
+                        rightDirection: rotLpPt([cp0[0] + L_cres * ct0[0], cp0[1] + L_cres * ct0[1]]),
                         pointType: "CORNER"
                     });
                     lpNodes.push({
-                        anchor: [Math.round(cpM[0] * MM_TO_PT * 10000) / 10000, Math.round(cpM[1] * MM_TO_PT * 10000) / 10000],
-                        leftDirection: [Math.round((cpM[0] - L_cres * ctM[0]) * MM_TO_PT * 10000) / 10000, Math.round((cpM[1] - L_cres * ctM[1]) * MM_TO_PT * 10000) / 10000],
-                        rightDirection: [Math.round((cpM[0] + L_cres * ctM[0]) * MM_TO_PT * 10000) / 10000, Math.round((cpM[1] + L_cres * ctM[1]) * MM_TO_PT * 10000) / 10000],
+                        anchor: rotLpPt(cpM),
+                        leftDirection: rotLpPt([cpM[0] - L_cres * ctM[0], cpM[1] - L_cres * ctM[1]]),
+                        rightDirection: rotLpPt([cpM[0] + L_cres * ctM[0], cpM[1] + L_cres * ctM[1]]),
                         pointType: "SMOOTH"
                     });
                     lpNodes.push({
-                        anchor: [Math.round(cp2[0] * MM_TO_PT * 10000) / 10000, Math.round(cp2[1] * MM_TO_PT * 10000) / 10000],
-                        leftDirection: [Math.round((cp2[0] - L_cres * ct2[0]) * MM_TO_PT * 10000) / 10000, Math.round((cp2[1] - L_cres * ct2[1]) * MM_TO_PT * 10000) / 10000],
-                        rightDirection: [Math.round(cp2[0] * MM_TO_PT * 10000) / 10000, Math.round(cp2[1] * MM_TO_PT * 10000) / 10000],
+                        anchor: rotLpPt(cp2),
+                        leftDirection: rotLpPt([cp2[0] - L_cres * ct2[0], cp2[1] - L_cres * ct2[1]]),
+                        rightDirection: rotLpPt(cp2),
                         pointType: "CORNER"
                     });
 
@@ -1699,9 +1710,9 @@ function logWarn(category, msg, data) {
                     for (var d = 1; d < discArc.length - 1; d++) {
                         var dn = discArc[d];
                         lpNodes.push({
-                            anchor: [Math.round(dn.anchor[0] * MM_TO_PT * 10000) / 10000, Math.round(dn.anchor[1] * MM_TO_PT * 10000) / 10000],
-                            leftDirection: [Math.round(dn.leftDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(dn.leftDirection[1] * MM_TO_PT * 10000) / 10000],
-                            rightDirection: [Math.round(dn.rightDirection[0] * MM_TO_PT * 10000) / 10000, Math.round(dn.rightDirection[1] * MM_TO_PT * 10000) / 10000],
+                            anchor: rotLpPt(dn.anchor),
+                            leftDirection: rotLpPt(dn.leftDirection),
+                            rightDirection: rotLpPt(dn.rightDirection),
                             pointType: "SMOOTH"
                         });
                     }
@@ -1719,11 +1730,15 @@ function logWarn(category, msg, data) {
                 var concavePocket = createConcaveLockArcNodes(centerDist, R_shoe, R_star);
                 var pocketHalfAngle = concavePocket.deltaAngle || 0;
                 var theta_seg = (2.0 * Math.PI) / divisions;
+                var nTeethDriven = moveTeeth || (z / divisions);
+                var tau2 = (2.0 * Math.PI) / z;
+                var teethEnd2 = (nTeethDriven - 1) * tau2;
+                var dwellOffsetAngle = (teethEnd2 + theta_seg) / 2.0;
                 var lpNodes = [];
                 var lastIncomingHandle = null;
 
                 for (var s = 0; s < divisions; s++) {
-                    var dwellCenterAngle = s * theta_seg;
+                    var dwellCenterAngle = dwellOffsetAngle + (s * theta_seg);
                     var shoeRot = dwellCenterAngle + Math.PI;
                     var cosS = Math.cos(shoeRot);
                     var sinS = Math.sin(shoeRot);
@@ -1769,7 +1784,7 @@ function logWarn(category, msg, data) {
                         });
 
                         var pEndAngle = dwellCenterAngle + pocketHalfAngle;
-                        var pStartAngleNext = (s + 1) * theta_seg - pocketHalfAngle;
+                        var pStartAngleNext = dwellCenterAngle + theta_seg - pocketHalfAngle;
                         var arcConn = createArcBezierNodes(R_star, pEndAngle, pStartAngleNext);
 
                         if (arcConn.length >= 2) {
@@ -4218,7 +4233,7 @@ function logWarn(category, msg, data) {
                 profileShiftX: nodeX,
                 x: nodeX,
                 origCircle: n.origCircle || null,
-                initialRotDeg: n.initialRotDeg || 0.0,
+                initialRotDeg: (n.initialRotDeg !== undefined && n.initialRotDeg !== null) ? n.initialRotDeg : null,
                 children: []
             };
         }
@@ -4252,7 +4267,7 @@ function logWarn(category, msg, data) {
         root.layerIndex = root.stageIndex;
         root.centerMm = [root.xOffset, root.yOffset];
         root.centerPt = [root.xOffset * MM_TO_PT, root.yOffset * MM_TO_PT];
-        root.rotationDeg = root.initialRotDeg;
+        root.rotationDeg = (root.initialRotDeg !== null) ? root.initialRotDeg : 0.0;
         root.ratioFromRoot = 1.0;
         root.directionFromRoot = 1; // 1 = same, -1 = reversed
         queue.push(root);
@@ -4411,7 +4426,7 @@ function logWarn(category, msg, data) {
                             var phiDriverDwell = thetaDeg - drumCenter1;
 
                             var nDiv2 = child.divisions || 4;
-                            var nTeeth2 = child.moveTeeth || 2;
+                            var nTeeth2 = child.moveTeeth || (child.z / nDiv2);
                             var tau2 = 360.0 / child.z;
                             var thetaSeg2 = 360.0 / nDiv2;
                             var teethEnd2 = (nTeeth2 - 1) * tau2;
@@ -4419,7 +4434,7 @@ function logWarn(category, msg, data) {
                             var phiDrivenDwell = thetaDeg + 180.0 - dwellCenter2;
 
                             // Automatically align to Dwell Lock phase if no explicit initial rotation was set
-                            if (curr.rotationDeg === undefined || curr.rotationDeg === null || (curr.initialRotDeg === undefined && curr.rotationDeg === 0)) {
+                            if (curr.initialRotDeg === null || curr.initialRotDeg === undefined) {
                                 curr.rotationDeg = phiDriverDwell;
                             }
 
@@ -4771,7 +4786,7 @@ function logWarn(category, msg, data) {
         var z1 = spec.z1 || 8;
         var z2 = (spec.z2 !== undefined && spec.z2 !== null) ? spec.z2 : (divisions * moveTeeth);
         var angleDeg = (spec.angleDeg !== undefined) ? spec.angleDeg : 0.0;
-        var structure = spec.intermittentStructure || "coplanar";
+        var structure = spec.intermittentStructure || spec.structure || "coplanar";
         var lockClearance = (spec.lockClearance !== undefined) ? spec.lockClearance : 0.15;
         var tipRelief = (spec.tipRelief !== false);
         var shaft1 = (spec.shaftDiameter1 !== undefined) ? spec.shaftDiameter1 : 5.0;
@@ -5447,9 +5462,15 @@ var PathBuilder = (function () {
             }
 
             // === STEP 4: Two-Layer Lock Plate (if present) ===
+            // Exported to a dedicated sublayer (_LockPlate) to keep CAM cut paths isolated from gear teeth
             if (gearData.lockPlate && gearData.lockPlate.outerNodes && gearData.lockPlate.outerNodes.length > 0) {
-                var lockPlateGroup = gearGroup.groupItems.add();
-                lockPlateGroup.name = gearName + "_LockPlateLayer";
+                var lockLayerParent = (targetLayer.parent && targetLayer.parent.typename === "Layer") ? targetLayer.parent : targetLayer;
+                var lockLayerName = (targetLayer.parent && targetLayer.parent.typename === "Layer" ? targetLayer.parent.name : targetLayer.name) + "_LockPlate";
+                var lockPlateLayer = getOrCreateLayer(doc, lockLayerName, lockLayerParent);
+                unlockAndShowLayer(lockPlateLayer);
+
+                var lockPlateGroup = lockPlateLayer.groupItems.add();
+                lockPlateGroup.name = gearName + "_" + (gearData.lockPlate.name || "LockPlate");
                 var lpPath = lockPlateGroup.pathItems.add();
                 lpPath.name = gearData.lockPlate.name || (gearName + "_LockPlate");
                 applyBezierNodes(lpPath, gearData.lockPlate.outerNodes, center, rotOffsetRad, 1.0);
@@ -5458,6 +5479,13 @@ var PathBuilder = (function () {
 
                 var lpHole = drawShaftHoleItem(lockPlateGroup, center, gearData, rotOffsetRad, gearName + "_LockPlate", options);
                 if (lpHole) applyCutStyle(lpHole, cutStrokeWidth, cutColor);
+
+                var lpPins = drawAlignmentPinHoles(lockPlateGroup, center, gearData, rotOffsetRad, gearName + "_LockPlate", options);
+                if (lpPins && lpPins.length > 0) {
+                    for (var lpj = 0; lpj < lpPins.length; lpj++) {
+                        applyCutStyle(lpPins[lpj], cutStrokeWidth, cutColor);
+                    }
+                }
             }
 
         } else if (mode === "test_teeth") {
