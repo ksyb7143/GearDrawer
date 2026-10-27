@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Internal - Visual Verification for Internal Ring Gear
- * Version: 0.9.33
+ * Version: 0.9.34
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */

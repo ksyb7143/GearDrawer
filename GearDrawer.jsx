@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.33
+ * Version: 0.9.34
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -9251,124 +9251,832 @@ var DialogView = (function () {
             updatePreview();
         };
 
-        btnAddIntermittent.onClick = function () {
+        // ==========================================
+        // Modal: Add Intermittent Gear Pair Dialog
+        // ==========================================
+        function showAddIntermittentModal(initParams) {
+            initParams = initParams || {};
             var parentNode = getSelectedOrLastNode();
-            var mVal = parentNode ? parentNode.m : (parseFloat(etModule.text) || 3.0);
-            if (mVal < 2.0) mVal = 3.0;
-            var aVal = parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0);
-            var bVal = parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15);
-            var sVal = parentNode ? parentNode.shaftDiameter : (parseFloat(etDefShaft.text) || 5.0);
-            var stageVal = parentNode ? (parseInt(parentNode.stageIndex, 10) || 1) : 1;
+            var modal = new Window("dialog", "間欠歯車ペアの追加設定 (Intermittent Gear Pair)");
+            modal.orientation = "column";
+            modal.alignChildren = ["fill", "top"];
+            modal.spacing = 8;
+            modal.margins = 12;
 
-            var prefix = "G" + (trainNodes.length + 1) + "_";
-            var driverId = prefix + "Driver";
-            var drivenId = prefix + "Driven";
+            // Panel 1: Kinematic Connection
+            var pnlConn = modal.add("panel", undefined, "輪列接続設定 (Kinematic Connection)");
+            pnlConn.orientation = "column";
+            pnlConn.alignChildren = ["fill", "top"];
+            pnlConn.spacing = 6;
+            pnlConn.margins = 8;
 
-            var pairNodes = InvoluteMath.expandIntermittentPairToNodes({
-                m: mVal,
-                alphaDeg: aVal,
-                backlash: bVal,
-                shaftDiameter1: sVal,
-                shaftDiameter2: sVal,
-                driverId: driverId,
-                drivenId: drivenId,
-                parentId: parentNode ? parentNode.id : null,
-                relationType: parentNode ? "MESHING" : "ROOT",
-                stageIndex: stageVal,
-                divisions: 4,
-                moveTeeth: 2
-            });
+            var rowConn1 = pnlConn.add("group");
+            rowConn1.orientation = "row";
+            rowConn1.spacing = 8;
+            rowConn1.add("statictext", undefined, "親ギア:");
+            var parentOptions = ["なし (独立ルート)"];
+            var parentNodesList = [null];
+            var selParentIdx = 0;
+            for (var i = 0; i < trainNodes.length; i++) {
+                var tn = trainNodes[i];
+                parentOptions.push(tn.id + " (" + tn.gearType + ", z=" + tn.z + ", 段" + (tn.stageIndex || 1) + ")");
+                parentNodesList.push(tn);
+                if (parentNode && tn.id === parentNode.id) {
+                    selParentIdx = i + 1;
+                }
+            }
+            var ddParent = rowConn1.add("dropdownlist", undefined, parentOptions);
+            ddParent.selection = selParentIdx;
 
-            for (var pi = 0; pi < pairNodes.length; pi++) {
-                syncNodeProperties(pairNodes[pi]);
-                trainNodes.push(pairNodes[pi]);
+            rowConn1.add("statictext", undefined, "接続関係:");
+            var ddRelation = rowConn1.add("dropdownlist", undefined, ["噛み合い (MESHING)", "同軸 (COAXIAL)"]);
+            ddRelation.selection = (selParentIdx > 0) ? 0 : 0;
+
+            var rowConn2 = pnlConn.add("group");
+            rowConn2.orientation = "row";
+            rowConn2.spacing = 8;
+            rowConn2.add("statictext", undefined, "段番号(Stage):");
+            var defaultStage = 1;
+            if (parentNode) {
+                defaultStage = (ddRelation.selection && ddRelation.selection.index === 1) ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : (parseInt(parentNode.stageIndex, 10) || 1);
+            }
+            var etStage = rowConn2.add("edittext", undefined, String(defaultStage));
+            etStage.characters = 3;
+
+            rowConn2.add("statictext", undefined, "配置角度(°):");
+            var etAngle = rowConn2.add("edittext", undefined, "0.0");
+            etAngle.characters = 4;
+
+            // Panel 2: Gear Parameters
+            var pnlParams = modal.add("panel", undefined, "基本諸元 (Gear Parameters)");
+            pnlParams.orientation = "row";
+            pnlParams.spacing = 8;
+            pnlParams.margins = 8;
+
+            var curStage = parseInt(etStage.text, 10) || 1;
+            var stageDriver = getStageDriverNode(curStage, trainNodes);
+            var defM = initParams.m || (stageDriver ? stageDriver.m : (parentNode ? parentNode.m : (parseFloat(etModule.text) || 3.0)));
+            if (defM < 2.0) defM = 3.0;
+            var defA = initParams.alphaDeg || (stageDriver ? stageDriver.alphaDeg : (parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0)));
+            var defB = initParams.backlash || (stageDriver ? stageDriver.backlash : (parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15)));
+
+            pnlParams.add("statictext", undefined, "モジュール(m):");
+            var etM = pnlParams.add("edittext", undefined, String(defM));
+            etM.characters = 4;
+
+            pnlParams.add("statictext", undefined, "圧力角(°):");
+            var etA = pnlParams.add("edittext", undefined, String(defA));
+            etA.characters = 4;
+
+            pnlParams.add("statictext", undefined, "バックラッシ(mm):");
+            var etB = pnlParams.add("edittext", undefined, String(defB));
+            etB.characters = 4;
+
+            // Panel 3: Intermittent Parameters
+            var pnlInt = modal.add("panel", undefined, "間欠機構パラメータ (Intermittent Kinematics)");
+            pnlInt.orientation = "column";
+            pnlInt.alignChildren = ["fill", "top"];
+            pnlInt.spacing = 6;
+            pnlInt.margins = 8;
+
+            var rowInt1 = pnlInt.add("group");
+            rowInt1.orientation = "row";
+            rowInt1.spacing = 8;
+
+            rowInt1.add("statictext", undefined, "従動車分割数(S):");
+            var etDiv = rowInt1.add("edittext", undefined, String(initParams.divisions || "4"));
+            etDiv.characters = 3;
+
+            rowInt1.add("statictext", undefined, "送り歯数(k):");
+            var etMove = rowInt1.add("edittext", undefined, String(initParams.moveTeeth || "2"));
+            etMove.characters = 3;
+
+            rowInt1.add("statictext", undefined, "原動車歯数(z1):");
+            var etZ1 = rowInt1.add("edittext", undefined, String(initParams.z1 || "8"));
+            etZ1.characters = 3;
+
+            rowInt1.add("statictext", undefined, "従動車歯数(z2=S×k):");
+            var stZ2 = rowInt1.add("statictext", undefined, "8");
+            stZ2.characters = 4;
+
+            var rowInt2 = pnlInt.add("group");
+            rowInt2.orientation = "row";
+            rowInt2.spacing = 8;
+
+            rowInt2.add("statictext", undefined, "軸穴径(原動/従動 mm):");
+            var etShaft = rowInt2.add("edittext", undefined, String(initParams.shaftDiameter || (parentNode ? parentNode.shaftDiameter : (parseFloat(etDefShaft.text) || 5.0))));
+            etShaft.characters = 4;
+
+            var cbLock = rowInt2.add("checkbox", undefined, "ロック機構 (ドラム/アーク) を有効化");
+            cbLock.value = (initParams.enableLock !== undefined) ? !!initParams.enableLock : true;
+
+            // Panel 4: Analysis
+            var pnlInfo = modal.add("panel", undefined, "動作解析 (Analysis)");
+            pnlInfo.orientation = "row";
+            pnlInfo.spacing = 12;
+            pnlInfo.margins = 8;
+            var stIndexAngle = pnlInfo.add("statictext", undefined, "割出し角: 90.0°");
+            var stCenterDist = pnlInfo.add("statictext", undefined, "中心距離 a: 24.00 mm");
+
+            function updateIntermittentCalculations() {
+                var s = parseInt(etDiv.text, 10) || 4;
+                if (s < 2) s = 2;
+                var k = parseInt(etMove.text, 10) || 2;
+                if (k < 1) k = 1;
+                var z1 = parseInt(etZ1.text, 10) || 8;
+                var z2 = s * k;
+                stZ2.text = String(z2);
+
+                var m = parseFloat(etM.text) || 3.0;
+                var a = (m * (z1 + z2)) / 2.0;
+                var indexDeg = 360.0 / s;
+
+                stIndexAngle.text = "割出し角: " + indexDeg.toFixed(1) + "°";
+                stCenterDist.text = "中心距離 a: " + a.toFixed(2) + " mm";
             }
 
-            refreshTrainList(driverId);
-            updatePreview();
+            ddParent.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    ddRelation.enabled = true;
+                    if (ddRelation.selection.index === 1) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                } else {
+                    ddRelation.enabled = false;
+                    etStage.text = "1";
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updateIntermittentCalculations();
+            };
+
+            ddRelation.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    if (ddRelation.selection.index === 1) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updateIntermittentCalculations();
+            };
+
+            etDiv.onChanging = updateIntermittentCalculations;
+            etMove.onChanging = updateIntermittentCalculations;
+            etZ1.onChanging = updateIntermittentCalculations;
+            etM.onChanging = updateIntermittentCalculations;
+
+            updateIntermittentCalculations();
+
+            var grpBtn = modal.add("group");
+            grpBtn.orientation = "row";
+            grpBtn.alignment = ["right", "center"];
+            var btnCancel = grpBtn.add("button", undefined, "キャンセル");
+            var btnOk = grpBtn.add("button", undefined, "輪列に追加 (Add)");
+
+            btnCancel.onClick = function () { modal.close(0); };
+            btnOk.onClick = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                var s = parseInt(etDiv.text, 10) || 4;
+                var k = parseInt(etMove.text, 10) || 2;
+                var z1 = parseInt(etZ1.text, 10) || 8;
+                var m = parseFloat(etM.text) || 3.0;
+                var aDeg = parseFloat(etA.text) || 20.0;
+                var b = parseFloat(etB.text) || 0.15;
+                var stage = parseInt(etStage.text, 10) || 1;
+                var relAngle = parseFloat(etAngle.text) || 0.0;
+                var shaft = parseFloat(etShaft.text) || 5.0;
+                var relType = curParent ? ((ddRelation.selection.index === 1) ? "COAXIAL" : "MESHING") : "ROOT";
+
+                var prefix = "G" + (trainNodes.length + 1) + "_";
+                var driverId = prefix + "Driver";
+                var drivenId = prefix + "Driven";
+
+                var pairNodes = InvoluteMath.expandIntermittentPairToNodes({
+                    m: m,
+                    alphaDeg: aDeg,
+                    backlash: b,
+                    shaftDiameter1: shaft,
+                    shaftDiameter2: shaft,
+                    driverId: driverId,
+                    drivenId: drivenId,
+                    parentId: curParent ? curParent.id : null,
+                    relationType: relType,
+                    relativeAngleDeg: relAngle,
+                    stageIndex: stage,
+                    divisions: s,
+                    moveTeeth: k,
+                    z1: z1,
+                    enableLock: cbLock.value
+                });
+
+                for (var pi = 0; pi < pairNodes.length; pi++) {
+                    syncNodeProperties(pairNodes[pi]);
+                    trainNodes.push(pairNodes[pi]);
+                }
+
+                modal.close(1);
+                refreshTrainList(driverId);
+                updatePreview();
+            };
+
+            modal.show();
+        }
+
+        // ==========================================
+        // Modal: Add Planetary Gear System Dialog
+        // ==========================================
+        function showAddPlanetaryModal(initParams) {
+            initParams = initParams || {};
+            var parentNode = getSelectedOrLastNode();
+            var modal = new Window("dialog", "遊星歯車機構の追加設定 (Standard 2K-H Planetary)");
+            modal.orientation = "column";
+            modal.alignChildren = ["fill", "top"];
+            modal.spacing = 8;
+            modal.margins = 12;
+
+            // Panel 1: Kinematic Connection
+            var pnlConn = modal.add("panel", undefined, "輪列接続設定 (Kinematic Connection)");
+            pnlConn.orientation = "column";
+            pnlConn.alignChildren = ["fill", "top"];
+            pnlConn.spacing = 6;
+            pnlConn.margins = 8;
+
+            var rowConn1 = pnlConn.add("group");
+            rowConn1.orientation = "row";
+            rowConn1.spacing = 8;
+            rowConn1.add("statictext", undefined, "親ギア:");
+            var parentOptions = ["なし (独立ルート)"];
+            var parentNodesList = [null];
+            var selParentIdx = 0;
+            for (var i = 0; i < trainNodes.length; i++) {
+                var tn = trainNodes[i];
+                parentOptions.push(tn.id + " (" + tn.gearType + ", z=" + tn.z + ", 段" + (tn.stageIndex || 1) + ")");
+                parentNodesList.push(tn);
+                if (parentNode && tn.id === parentNode.id) {
+                    selParentIdx = i + 1;
+                }
+            }
+            var ddParent = rowConn1.add("dropdownlist", undefined, parentOptions);
+            ddParent.selection = selParentIdx;
+
+            rowConn1.add("statictext", undefined, "接続関係:");
+            var ddRelation = rowConn1.add("dropdownlist", undefined, ["同軸 (COAXIAL)", "噛み合い (MESHING)"]);
+            ddRelation.selection = 0;
+
+            var rowConn2 = pnlConn.add("group");
+            rowConn2.orientation = "row";
+            rowConn2.spacing = 8;
+            rowConn2.add("statictext", undefined, "太陽車の段番号(Stage):");
+            var defaultStage = 1;
+            if (parentNode) {
+                defaultStage = (ddRelation.selection.index === 0) ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : (parseInt(parentNode.stageIndex, 10) || 1);
+            }
+            var etStage = rowConn2.add("edittext", undefined, String(defaultStage));
+            etStage.characters = 3;
+
+            // Panel 2: Gear Parameters
+            var pnlParams = modal.add("panel", undefined, "基本諸元 (Gear Parameters)");
+            pnlParams.orientation = "row";
+            pnlParams.spacing = 8;
+            pnlParams.margins = 8;
+
+            var curStage = parseInt(etStage.text, 10) || 1;
+            var stageDriver = getStageDriverNode(curStage, trainNodes);
+            var defM = initParams.m || (stageDriver ? stageDriver.m : (parentNode ? parentNode.m : (parseFloat(etModule.text) || 2.0)));
+            var defA = initParams.alphaDeg || (stageDriver ? stageDriver.alphaDeg : (parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0)));
+            var defB = initParams.backlash || (stageDriver ? stageDriver.backlash : (parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15)));
+
+            pnlParams.add("statictext", undefined, "モジュール(m):");
+            var etM = pnlParams.add("edittext", undefined, String(defM));
+            etM.characters = 4;
+
+            pnlParams.add("statictext", undefined, "圧力角(°):");
+            var etA = pnlParams.add("edittext", undefined, String(defA));
+            etA.characters = 4;
+
+            pnlParams.add("statictext", undefined, "バックラッシ(mm):");
+            var etB = pnlParams.add("edittext", undefined, String(defB));
+            etB.characters = 4;
+
+            // Panel 3: Teeth Configuration
+            var pnlTeeth = modal.add("panel", undefined, "歯数・遊星数構成 (Gear Teeth & Planets)");
+            pnlTeeth.orientation = "column";
+            pnlTeeth.alignChildren = ["fill", "top"];
+            pnlTeeth.spacing = 6;
+            pnlTeeth.margins = 8;
+
+            var rowTeeth1 = pnlTeeth.add("group");
+            rowTeeth1.orientation = "row";
+            rowTeeth1.spacing = 8;
+
+            rowTeeth1.add("statictext", undefined, "太陽歯車 (zs):");
+            var etZs = rowTeeth1.add("edittext", undefined, String(initParams.zs || (typeof etPlanetaryZs !== "undefined" ? etPlanetaryZs.text : "18")));
+            etZs.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "遊星歯車 (zp):");
+            var etZp = rowTeeth1.add("edittext", undefined, String(initParams.zp || (typeof etPlanetaryZp !== "undefined" ? etPlanetaryZp.text : "18")));
+            etZp.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "内歯車 (zr):");
+            var zs0 = parseInt(etZs.text, 10) || 18;
+            var zp0 = parseInt(etZp.text, 10) || 18;
+            var etZr = rowTeeth1.add("edittext", undefined, String(initParams.zr || (zs0 + 2 * zp0)));
+            etZr.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "遊星数 (N):");
+            var etN = rowTeeth1.add("edittext", undefined, String(initParams.numPlanets || (typeof etPlanetaryN !== "undefined" ? etPlanetaryN.text : "3")));
+            etN.characters = 3;
+
+            var rowTeeth2 = pnlTeeth.add("group");
+            rowTeeth2.orientation = "row";
+            rowTeeth2.spacing = 8;
+
+            rowTeeth2.add("statictext", undefined, "軸穴径 (太陽/遊星 mm):");
+            var etShaftSun = rowTeeth2.add("edittext", undefined, "5.0");
+            etShaftSun.characters = 4;
+            var etShaftPlanet = rowTeeth2.add("edittext", undefined, "4.0");
+            etShaftPlanet.characters = 4;
+
+            rowTeeth2.add("statictext", undefined, "内歯車リム外径オフセット(mm):");
+            var etRimOffset = rowTeeth2.add("edittext", undefined, "16.0");
+            etRimOffset.characters = 4;
+
+            // Panel 4: Feasibility
+            var pnlFeas = modal.add("panel", undefined, "幾何解析・組立判定 (Assembly Feasibility)");
+            pnlFeas.orientation = "column";
+            pnlFeas.alignChildren = ["fill", "top"];
+            pnlFeas.spacing = 4;
+            pnlFeas.margins = 8;
+
+            var stCond1 = pnlFeas.add("statictext", undefined, "同心条件 (zr = zs + 2zp): OK");
+            var stCond2 = pnlFeas.add("statictext", undefined, "組立条件 ((zs + zr)/N = 整数): OK");
+            var stRatio = pnlFeas.add("statictext", undefined, "減速比: 内歯固定時 i = 4.00, キャリア固定時 i = -3.00");
+
+            function updatePlanetaryCalculations(autoZr) {
+                var zs = parseInt(etZs.text, 10) || 18;
+                var zp = parseInt(etZp.text, 10) || 18;
+                if (autoZr) {
+                    etZr.text = String(zs + 2 * zp);
+                }
+                var zr = parseInt(etZr.text, 10) || (zs + 2 * zp);
+                var n = parseInt(etN.text, 10) || 3;
+
+                if (zr === (zs + 2 * zp)) {
+                    stCond1.text = "同心条件 (zr = zs + 2zp): OK (" + zr + " = " + zs + " + " + (2 * zp) + ")";
+                } else {
+                    stCond1.text = "同心条件: 要転位 (差分 " + (zr - (zs + 2 * zp)) + " 歯)";
+                }
+
+                var sumZ = zs + zr;
+                if (sumZ % n === 0) {
+                    stCond2.text = "組立条件 ((zs + zr)/N = 整数): OK (" + sumZ + " / " + n + " = " + (sumZ / n) + ")";
+                } else {
+                    stCond2.text = "組立条件: NG (" + sumZ + " / " + n + " = " + (sumZ / n).toFixed(2) + " 非整数 - 等配不可)";
+                }
+
+                var iRingFix = 1.0 + (zr / zs);
+                var iCarrFix = -(zr / zs);
+                stRatio.text = "減速比: 内歯固定時 i = " + iRingFix.toFixed(2) + " (増力), キャリア固定時 i = " + iCarrFix.toFixed(2) + " (逆転)";
+            }
+
+            ddParent.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    ddRelation.enabled = true;
+                    if (ddRelation.selection.index === 0) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                } else {
+                    ddRelation.enabled = false;
+                    etStage.text = "1";
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updatePlanetaryCalculations(false);
+            };
+
+            ddRelation.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    if (ddRelation.selection.index === 0) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updatePlanetaryCalculations(false);
+            };
+
+            etZs.onChanging = function () { updatePlanetaryCalculations(true); };
+            etZp.onChanging = function () { updatePlanetaryCalculations(true); };
+            etZr.onChanging = function () { updatePlanetaryCalculations(false); };
+            etN.onChanging = function () { updatePlanetaryCalculations(false); };
+
+            updatePlanetaryCalculations(false);
+
+            var grpBtn = modal.add("group");
+            grpBtn.orientation = "row";
+            grpBtn.alignment = ["right", "center"];
+            var btnCancel = grpBtn.add("button", undefined, "キャンセル");
+            var btnOk = grpBtn.add("button", undefined, "輪列に追加 (Add)");
+
+            btnCancel.onClick = function () { modal.close(0); };
+            btnOk.onClick = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                var zs = parseInt(etZs.text, 10) || 18;
+                var zp = parseInt(etZp.text, 10) || 18;
+                var zr = parseInt(etZr.text, 10) || (zs + 2 * zp);
+                var n = parseInt(etN.text, 10) || 3;
+                var m = parseFloat(etM.text) || 2.0;
+                var aDeg = parseFloat(etA.text) || 20.0;
+                var b = parseFloat(etB.text) || 0.15;
+                var stage = parseInt(etStage.text, 10) || 1;
+                var shaftS = parseFloat(etShaftSun.text) || 5.0;
+                var shaftP = parseFloat(etShaftPlanet.text) || 4.0;
+                var rimOffset = parseFloat(etRimOffset.text) || 16.0;
+                var rimDia = (m * zr) + rimOffset;
+                var relType = curParent ? ((ddRelation.selection.index === 0) ? "COAXIAL" : "MESHING") : "ROOT";
+
+                var prefix = "PL" + (trainNodes.length + 1) + "_";
+
+                var pNodes = InvoluteMath.expandPlanetaryToNodes({
+                    m: m,
+                    zs: zs,
+                    zp: zp,
+                    zr: zr,
+                    numPlanets: n,
+                    alphaDeg: aDeg,
+                    backlash: b,
+                    shaftDiameterSun: shaftS,
+                    shaftDiameterPlanet: shaftP,
+                    rimDiameter: rimDia,
+                    parentId: curParent ? curParent.id : null,
+                    relationType: relType,
+                    stageIndex: stage,
+                    idPrefix: prefix
+                });
+
+                for (var i = 0; i < pNodes.length; i++) {
+                    syncNodeProperties(pNodes[i]);
+                    trainNodes.push(pNodes[i]);
+                }
+
+                modal.close(1);
+                refreshTrainList(pNodes[0].id);
+                updatePreview();
+            };
+
+            modal.show();
+        }
+
+        // ==========================================
+        // Modal: Add Paradoxical Planetary Dialog
+        // ==========================================
+        function showAddParadoxModal(initParams) {
+            initParams = initParams || {};
+            var parentNode = getSelectedOrLastNode();
+            var modal = new Window("dialog", "不思議遊星歯車機構の追加設定 (3K Paradoxical Planetary)");
+            modal.orientation = "column";
+            modal.alignChildren = ["fill", "top"];
+            modal.spacing = 8;
+            modal.margins = 12;
+
+            // Panel 1: Kinematic Connection
+            var pnlConn = modal.add("panel", undefined, "輪列接続設定 (Kinematic Connection)");
+            pnlConn.orientation = "column";
+            pnlConn.alignChildren = ["fill", "top"];
+            pnlConn.spacing = 6;
+            pnlConn.margins = 8;
+
+            var rowConn1 = pnlConn.add("group");
+            rowConn1.orientation = "row";
+            rowConn1.spacing = 8;
+            rowConn1.add("statictext", undefined, "親ギア:");
+            var parentOptions = ["なし (独立ルート)"];
+            var parentNodesList = [null];
+            var selParentIdx = 0;
+            for (var i = 0; i < trainNodes.length; i++) {
+                var tn = trainNodes[i];
+                parentOptions.push(tn.id + " (" + tn.gearType + ", z=" + tn.z + ", 段" + (tn.stageIndex || 1) + ")");
+                parentNodesList.push(tn);
+                if (parentNode && tn.id === parentNode.id) {
+                    selParentIdx = i + 1;
+                }
+            }
+            var ddParent = rowConn1.add("dropdownlist", undefined, parentOptions);
+            ddParent.selection = selParentIdx;
+
+            rowConn1.add("statictext", undefined, "接続関係:");
+            var ddRelation = rowConn1.add("dropdownlist", undefined, ["同軸 (COAXIAL)", "噛み合い (MESHING)"]);
+            ddRelation.selection = 0;
+
+            var rowConn2 = pnlConn.add("group");
+            rowConn2.orientation = "row";
+            rowConn2.spacing = 8;
+            rowConn2.add("statictext", undefined, "固定内歯車段(Stage):");
+            var defaultStage = 1;
+            if (parentNode) {
+                defaultStage = (ddRelation.selection.index === 0) ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : (parseInt(parentNode.stageIndex, 10) || 1);
+            }
+            var etStage = rowConn2.add("edittext", undefined, String(defaultStage));
+            etStage.characters = 3;
+
+            rowConn2.add("statictext", undefined, "出力内歯車段:");
+            var stStageOut = rowConn2.add("statictext", undefined, "段 " + (defaultStage + 1));
+
+            // Panel 2: Gear Parameters
+            var pnlParams = modal.add("panel", undefined, "基本諸元 (Gear Parameters)");
+            pnlParams.orientation = "row";
+            pnlParams.spacing = 8;
+            pnlParams.margins = 8;
+
+            var curStage = parseInt(etStage.text, 10) || 1;
+            var stageDriver = getStageDriverNode(curStage, trainNodes);
+            var defM = initParams.m || (stageDriver ? stageDriver.m : (parentNode ? parentNode.m : (parseFloat(etModule.text) || 2.0)));
+            var defA = initParams.alphaDeg || (stageDriver ? stageDriver.alphaDeg : (parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0)));
+            var defB = initParams.backlash || (stageDriver ? stageDriver.backlash : (parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15)));
+
+            pnlParams.add("statictext", undefined, "モジュール(m):");
+            var etM = pnlParams.add("edittext", undefined, String(defM));
+            etM.characters = 4;
+
+            pnlParams.add("statictext", undefined, "圧力角(°):");
+            var etA = pnlParams.add("edittext", undefined, String(defA));
+            etA.characters = 4;
+
+            pnlParams.add("statictext", undefined, "バックラッシ(mm):");
+            var etB = pnlParams.add("edittext", undefined, String(defB));
+            etB.characters = 4;
+
+            // Panel 3: Teeth Configuration
+            var pnlTeeth = modal.add("panel", undefined, "歯数・遊星数構成 (Teeth Configuration)");
+            pnlTeeth.orientation = "column";
+            pnlTeeth.alignChildren = ["fill", "top"];
+            pnlTeeth.spacing = 6;
+            pnlTeeth.margins = 8;
+
+            var rowTeeth1 = pnlTeeth.add("group");
+            rowTeeth1.orientation = "row";
+            rowTeeth1.spacing = 8;
+
+            rowTeeth1.add("statictext", undefined, "太陽 (zs):");
+            var etZs = rowTeeth1.add("edittext", undefined, String(initParams.zs || (typeof etParadoxZs !== "undefined" ? etParadoxZs.text : "24")));
+            etZs.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "遊星 (zp):");
+            var etZp = rowTeeth1.add("edittext", undefined, String(initParams.zp || (typeof etParadoxZp !== "undefined" ? etParadoxZp.text : "18")));
+            etZp.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "固定内歯 (zr1):");
+            var zs0 = parseInt(etZs.text, 10) || 24;
+            var zp0 = parseInt(etZp.text, 10) || 18;
+            var etZr1 = rowTeeth1.add("edittext", undefined, String(initParams.zr1 || (zs0 + 2 * zp0)));
+            etZr1.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "出力内歯 (zr2):");
+            var etZr2 = rowTeeth1.add("edittext", undefined, String(initParams.zr2 || (typeof etParadoxZr2 !== "undefined" ? etParadoxZr2.text : "57")));
+            etZr2.characters = 4;
+
+            rowTeeth1.add("statictext", undefined, "遊星数 (N):");
+            var etN = rowTeeth1.add("edittext", undefined, String(initParams.numPlanets || (typeof etParadoxN !== "undefined" ? etParadoxN.text : "3")));
+            etN.characters = 3;
+
+            var rowTeeth2 = pnlTeeth.add("group");
+            rowTeeth2.orientation = "row";
+            rowTeeth2.spacing = 8;
+
+            rowTeeth2.add("statictext", undefined, "軸穴径 (太陽/遊星 mm):");
+            var etShaftSun = rowTeeth2.add("edittext", undefined, "5.0");
+            etShaftSun.characters = 4;
+            var etShaftPlanet = rowTeeth2.add("edittext", undefined, "4.0");
+            etShaftPlanet.characters = 4;
+
+            rowTeeth2.add("statictext", undefined, "内歯車リム外径オフセット(mm):");
+            var etRimOffset = rowTeeth2.add("edittext", undefined, "16.0");
+            etRimOffset.characters = 4;
+
+            // Panel 4: Kinematics & Profile Shift
+            var pnlFeas = modal.add("panel", undefined, "機構解析・転位量・超減速比 (Kinematics & Profile Shift)");
+            pnlFeas.orientation = "column";
+            pnlFeas.alignChildren = ["fill", "top"];
+            pnlFeas.spacing = 4;
+            pnlFeas.margins = 8;
+
+            var stRatio = pnlFeas.add("statictext", undefined, "超減速比 i: -19.00");
+            var stShift = pnlFeas.add("statictext", undefined, "出力内歯車 転位係数 xr2: +0.0000");
+            var stAssem = pnlFeas.add("statictext", undefined, "組立条件判定: 固定 OK / 出力 OK");
+
+            function updateParadoxCalculations(autoZr1) {
+                var zs = parseInt(etZs.text, 10) || 24;
+                var zp = parseInt(etZp.text, 10) || 18;
+                if (autoZr1) {
+                    etZr1.text = String(zs + 2 * zp);
+                }
+                var zr1 = parseInt(etZr1.text, 10) || (zs + 2 * zp);
+                var zr2 = parseInt(etZr2.text, 10) || (zr1 - 3);
+                var n = parseInt(etN.text, 10) || 3;
+                var mVal = parseFloat(etM.text) || 2.0;
+                var aVal = parseFloat(etA.text) || 20.0;
+
+                var ratio = (zr1 !== zr2) ? (zr2 / (zr2 - zr1)) : 0;
+                stRatio.text = "超減速比 i: " + ratio.toFixed(2) + " (1入力回転に対し " + (1.0 / ratio).toFixed(4) + " 回転出力)";
+
+                var alpha = aVal * (Math.PI / 180.0);
+                var a = (mVal * (zs + zp)) / 2.0;
+                var a0_2 = (mVal * (zr2 - zp)) / 2.0;
+                var cosAw2 = (a0_2 / a) * Math.cos(alpha);
+                var xr2Val = 0.0;
+                if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
+                    var aw2 = Math.acos(cosAw2);
+                    var invAlpha = Math.tan(alpha) - alpha;
+                    var invAw2 = Math.tan(aw2) - aw2;
+                    xr2Val = (zr2 - zp) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
+                    stShift.text = "出力内歯車 転位係数 xr2: " + ((xr2Val >= 0 ? "+" : "") + xr2Val.toFixed(4));
+                } else {
+                    stShift.text = "出力内歯車 転位係数: 中心距離整合限界外";
+                }
+
+                var ok1 = ((zs + zr1) % n === 0);
+                var ok2 = ((zs + zr2) % n === 0);
+                stAssem.text = "組立条件判定: 固定(zr1) " + (ok1 ? "OK" : "NG") + " / 出力(zr2) " + (ok2 ? "OK" : "NG");
+            }
+
+            ddParent.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    ddRelation.enabled = true;
+                    if (ddRelation.selection.index === 0) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                } else {
+                    ddRelation.enabled = false;
+                    etStage.text = "1";
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                stStageOut.text = "段 " + (stg + 1);
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updateParadoxCalculations(false);
+            };
+
+            ddRelation.onChange = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                if (curParent) {
+                    if (ddRelation.selection.index === 0) {
+                        etStage.text = String((parseInt(curParent.stageIndex, 10) || 1) + 1);
+                    } else {
+                        etStage.text = String(parseInt(curParent.stageIndex, 10) || 1);
+                    }
+                }
+                var stg = parseInt(etStage.text, 10) || 1;
+                stStageOut.text = "段 " + (stg + 1);
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+                updateParadoxCalculations(false);
+            };
+
+            etStage.onChanging = function () {
+                var stg = parseInt(etStage.text, 10) || 1;
+                stStageOut.text = "段 " + (stg + 1);
+                var drv = getStageDriverNode(stg, trainNodes);
+                if (drv) {
+                    etM.text = String(drv.m);
+                    etA.text = String(drv.alphaDeg);
+                    etB.text = String(drv.backlash);
+                }
+            };
+
+            etZs.onChanging = function () { updateParadoxCalculations(true); };
+            etZp.onChanging = function () { updateParadoxCalculations(true); };
+            etZr1.onChanging = function () { updateParadoxCalculations(false); };
+            etZr2.onChanging = function () { updateParadoxCalculations(false); };
+            etN.onChanging = function () { updateParadoxCalculations(false); };
+            etM.onChanging = function () { updateParadoxCalculations(false); };
+            etA.onChanging = function () { updateParadoxCalculations(false); };
+
+            updateParadoxCalculations(false);
+
+            var grpBtn = modal.add("group");
+            grpBtn.orientation = "row";
+            grpBtn.alignment = ["right", "center"];
+            var btnCancel = grpBtn.add("button", undefined, "キャンセル");
+            var btnOk = grpBtn.add("button", undefined, "輪列に追加 (Add)");
+
+            btnCancel.onClick = function () { modal.close(0); };
+            btnOk.onClick = function () {
+                var curParent = parentNodesList[ddParent.selection.index];
+                var zs = parseInt(etZs.text, 10) || 24;
+                var zp = parseInt(etZp.text, 10) || 18;
+                var zr1 = parseInt(etZr1.text, 10) || (zs + 2 * zp);
+                var zr2 = parseInt(etZr2.text, 10) || (zr1 - 3);
+                var n = parseInt(etN.text, 10) || 3;
+                var m = parseFloat(etM.text) || 2.0;
+                var aDeg = parseFloat(etA.text) || 20.0;
+                var b = parseFloat(etB.text) || 0.15;
+                var stage = parseInt(etStage.text, 10) || 1;
+                var shaftS = parseFloat(etShaftSun.text) || 5.0;
+                var shaftP = parseFloat(etShaftPlanet.text) || 4.0;
+                var rimOffset = parseFloat(etRimOffset.text) || 16.0;
+                var relType = curParent ? ((ddRelation.selection.index === 0) ? "COAXIAL" : "MESHING") : "ROOT";
+
+                var alpha = aDeg * (Math.PI / 180.0);
+                var a = (m * (zs + zp)) / 2.0;
+                var a0_2 = (m * (zr2 - zp)) / 2.0;
+                var cosAw2 = (a0_2 / a) * Math.cos(alpha);
+                var xr2Val = 0.0;
+                if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
+                    var aw2 = Math.acos(cosAw2);
+                    var invAlpha = Math.tan(alpha) - alpha;
+                    var invAw2 = Math.tan(aw2) - aw2;
+                    xr2Val = (zr2 - zp) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
+                }
+
+                var prefix = "PDX" + (trainNodes.length + 1) + "_";
+
+                var pdxNodes = InvoluteMath.expandParadoxicalToNodes({
+                    m: m,
+                    zs: zs,
+                    zp: zp,
+                    zr1: zr1,
+                    zr2: zr2,
+                    numPlanets: n,
+                    alphaDeg: aDeg,
+                    backlash: b,
+                    xr2: xr2Val,
+                    shaftDiameterSun: shaftS,
+                    shaftDiameterPlanet: shaftP,
+                    rimDiameter1: (m * zr1) + rimOffset,
+                    rimDiameter2: (m * zr2) + rimOffset,
+                    parentId: curParent ? curParent.id : null,
+                    relationType: relType,
+                    stageIndex: stage,
+                    idPrefix: prefix
+                });
+
+                for (var i = 0; i < pdxNodes.length; i++) {
+                    syncNodeProperties(pdxNodes[i]);
+                    trainNodes.push(pdxNodes[i]);
+                }
+
+                modal.close(1);
+                refreshTrainList(pdxNodes[0].id);
+                updatePreview();
+            };
+
+            modal.show();
+        }
+
+        btnAddIntermittent.onClick = function () {
+            showAddIntermittentModal();
         };
 
         btnAddPlanetary.onClick = function () {
-            var parentNode = getSelectedOrLastNode();
-            var nextStage = parentNode ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : 1;
-            var prefix = "PL" + (trainNodes.length + 1) + "_";
-
-            var zsVal = parseInt(etPlanetaryZs.text, 10) || 18;
-            var zpVal = parseInt(etPlanetaryZp.text, 10) || 18;
-            var zrVal = parseInt(etPlanetaryZr.text, 10) || (zsVal + 2 * zpVal);
-            var nVal = parseInt(etPlanetaryN.text, 10) || 3;
-            var mVal = parseFloat(etModule.text) || (parentNode ? parentNode.m : 2.0);
-            var aVal = parseFloat(etAlpha.text) || (parentNode ? parentNode.alphaDeg : 20.0);
-
-            var pNodes = InvoluteMath.expandPlanetaryToNodes({
-                m: mVal,
-                zs: zsVal,
-                zp: zpVal,
-                zr: zrVal,
-                numPlanets: nVal,
-                alphaDeg: aVal,
-                parentId: parentNode ? parentNode.id : null,
-                relationType: parentNode ? "COAXIAL" : "ROOT",
-                stageIndex: nextStage,
-                idPrefix: prefix
-            });
-
-            for (var i = 0; i < pNodes.length; i++) {
-                syncNodeProperties(pNodes[i]);
-                trainNodes.push(pNodes[i]);
-            }
-
-            refreshTrainList(pNodes[0].id);
-            updatePreview();
+            showAddPlanetaryModal();
         };
 
         btnAddParadox.onClick = function () {
-            var parentNode = getSelectedOrLastNode();
-            var nextStage = parentNode ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : 1;
-            var prefix = "PDX" + (trainNodes.length + 1) + "_";
-
-            var zsVal = parseInt(etParadoxZs.text, 10) || 24;
-            var zpVal = parseInt(etParadoxZp.text, 10) || 18;
-            var zr1Val = parseInt(etParadoxZr1.text, 10) || (zsVal + 2 * zpVal);
-            var zr2Val = parseInt(etParadoxZr2.text, 10) || (zr1Val - 1);
-            var nVal = parseInt(etParadoxN.text, 10) || 3;
-            var mVal = parseFloat(etModule.text) || (parentNode ? parentNode.m : 2.0);
-            var aVal = parseFloat(etAlpha.text) || (parentNode ? parentNode.alphaDeg : 20.0);
-
-            var alpha = aVal * (Math.PI / 180.0);
-            var a = (mVal * (zsVal + zpVal)) / 2.0;
-            var a0_2 = (mVal * (zr2Val - zpVal)) / 2.0;
-            var cosAw2 = (a0_2 / a) * Math.cos(alpha);
-            var xr2Val = 0.0;
-            if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
-                var aw2 = Math.acos(cosAw2);
-                var invAlpha = Math.tan(alpha) - alpha;
-                var invAw2 = Math.tan(aw2) - aw2;
-                xr2Val = (zr2Val - zpVal) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
-            }
-
-            var pdxNodes = InvoluteMath.expandParadoxicalToNodes({
-                m: mVal,
-                zs: zsVal,
-                zp: zpVal,
-                zr1: zr1Val,
-                zr2: zr2Val,
-                numPlanets: nVal,
-                alphaDeg: aVal,
-                xr2: xr2Val,
-                parentId: parentNode ? parentNode.id : null,
-                relationType: parentNode ? "COAXIAL" : "ROOT",
-                stageIndex: nextStage,
-                idPrefix: prefix
-            });
-
-            for (var i = 0; i < pdxNodes.length; i++) {
-                syncNodeProperties(pdxNodes[i]);
-                trainNodes.push(pdxNodes[i]);
-            }
-
-            refreshTrainList(pdxNodes[0].id);
-            updatePreview();
+            showAddParadoxModal();
         };
 
         btnDeleteNode.onClick = function () {
@@ -9621,61 +10329,14 @@ var DialogView = (function () {
         };
 
         btnPlanetaryExpand.onClick = function () {
-            var mVal = parseFloat(etModule.text) || 2.0;
-            var aVal = parseFloat(etAlpha.text) || 20.0;
-            var zsVal = parseInt(etPlanetaryZs.text, 10) || 18;
-            var zpVal = parseInt(etPlanetaryZp.text, 10) || 18;
-            var zrVal = parseInt(etPlanetaryZr.text, 10) || (zsVal + 2 * zpVal);
-            var nVal = parseInt(etPlanetaryN.text, 10) || 3;
-
-            var selParent = null;
-            if (trainNodes && trainNodes.length > 0) {
-                var candParent = getSelectedOrLastNode();
-                if (candParent) {
-                    var append = confirm("既存の輪列の選択ギア [" + candParent.id + "] に同軸接続して遊星歯車を追加しますか？\n\n[はい] : 既存輪列の途中に追加\n[いいえ] : 新規の独立輪列として置き換え");
-                    if (append) {
-                        selParent = candParent;
-                    }
-                }
-            }
-
-            if (selParent) {
-                var nextStage = (parseInt(selParent.stageIndex, 10) || 1) + 1;
-                var prefix = "PL" + (trainNodes.length + 1) + "_";
-                var pNodes = InvoluteMath.expandPlanetaryToNodes({
-                    m: mVal,
-                    zs: zsVal,
-                    zp: zpVal,
-                    zr: zrVal,
-                    numPlanets: nVal,
-                    alphaDeg: aVal,
-                    parentId: selParent.id,
-                    relationType: "COAXIAL",
-                    stageIndex: nextStage,
-                    idPrefix: prefix
-                });
-                for (var i = 0; i < pNodes.length; i++) {
-                    syncNodeProperties(pNodes[i]);
-                    trainNodes.push(pNodes[i]);
-                }
-                ddMechanism.selection = 0;
-                switchMechanism(0);
-                refreshTrainList(pNodes[0].id);
-                updatePreview();
-            } else {
-                trainNodes = InvoluteMath.expandPlanetaryToNodes({
-                    m: mVal,
-                    zs: zsVal,
-                    zp: zpVal,
-                    zr: zrVal,
-                    numPlanets: nVal,
-                    alphaDeg: aVal
-                });
-                ddMechanism.selection = 0;
-                switchMechanism(0);
-                refreshTrainList("S1");
-                updatePreview();
-            }
+            showAddPlanetaryModal({
+                zs: parseInt(etPlanetaryZs.text, 10) || 18,
+                zp: parseInt(etPlanetaryZp.text, 10) || 18,
+                zr: parseInt(etPlanetaryZr.text, 10) || 54,
+                numPlanets: parseInt(etPlanetaryN.text, 10) || 3
+            });
+            ddMechanism.selection = 0;
+            switchMechanism(0);
         };
 
         ddPlanetaryCandidates.onChange = function () {
@@ -9748,78 +10409,15 @@ var DialogView = (function () {
         };
 
         btnParadoxExpand.onClick = function () {
-            var mVal = parseFloat(etModule.text) || 2.0;
-            var aVal = parseFloat(etAlpha.text) || 20.0;
-            var zsVal = parseInt(etParadoxZs.text, 10) || 24;
-            var zpVal = parseInt(etParadoxZp.text, 10) || 18;
-            var zr1Val = parseInt(etParadoxZr1.text, 10) || (zsVal + 2 * zpVal);
-            var zr2Val = parseInt(etParadoxZr2.text, 10) || (zr1Val - 1);
-            var nVal = parseInt(etParadoxN.text, 10) || 3;
-
-            var alpha = aVal * (Math.PI / 180.0);
-            var a = (mVal * (zsVal + zpVal)) / 2.0;
-            var a0_2 = (mVal * (zr2Val - zpVal)) / 2.0;
-            var cosAw2 = (a0_2 / a) * Math.cos(alpha);
-            var xr2Val = 0.0;
-            if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
-                var aw2 = Math.acos(cosAw2);
-                var invAlpha = Math.tan(alpha) - alpha;
-                var invAw2 = Math.tan(aw2) - aw2;
-                xr2Val = (zr2Val - zpVal) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
-            }
-
-            var selParent = null;
-            if (trainNodes && trainNodes.length > 0) {
-                var candParent = getSelectedOrLastNode();
-                if (candParent) {
-                    var append = confirm("既存の輪列の選択ギア [" + candParent.id + "] に同軸接続して不思議遊星歯車を追加しますか？\n\n[はい] : 既存輪列の途中に追加\n[いいえ] : 新規の独立輪列として置き換え");
-                    if (append) {
-                        selParent = candParent;
-                    }
-                }
-            }
-
-            if (selParent) {
-                var nextStage = (parseInt(selParent.stageIndex, 10) || 1) + 1;
-                var prefix = "PDX" + (trainNodes.length + 1) + "_";
-                var pdxNodes = InvoluteMath.expandParadoxicalToNodes({
-                    m: mVal,
-                    zs: zsVal,
-                    zp: zpVal,
-                    zr1: zr1Val,
-                    zr2: zr2Val,
-                    numPlanets: nVal,
-                    alphaDeg: aVal,
-                    xr2: xr2Val,
-                    parentId: selParent.id,
-                    relationType: "COAXIAL",
-                    stageIndex: nextStage,
-                    idPrefix: prefix
-                });
-                for (var i = 0; i < pdxNodes.length; i++) {
-                    syncNodeProperties(pdxNodes[i]);
-                    trainNodes.push(pdxNodes[i]);
-                }
-                ddMechanism.selection = 0;
-                switchMechanism(0);
-                refreshTrainList(pdxNodes[0].id);
-                updatePreview();
-            } else {
-                trainNodes = InvoluteMath.expandParadoxicalToNodes({
-                    m: mVal,
-                    zs: zsVal,
-                    zp: zpVal,
-                    zr1: zr1Val,
-                    zr2: zr2Val,
-                    numPlanets: nVal,
-                    alphaDeg: aVal,
-                    xr2: xr2Val
-                });
-                ddMechanism.selection = 0;
-                switchMechanism(0);
-                refreshTrainList("S1");
-                updatePreview();
-            }
+            showAddParadoxModal({
+                zs: parseInt(etParadoxZs.text, 10) || 24,
+                zp: parseInt(etParadoxZp.text, 10) || 18,
+                zr1: parseInt(etParadoxZr1.text, 10) || 60,
+                zr2: parseInt(etParadoxZr2.text, 10) || 57,
+                numPlanets: parseInt(etParadoxN.text, 10) || 3
+            });
+            ddMechanism.selection = 0;
+            switchMechanism(0);
         };
 
         ddParadoxCandidates.onChange = function () {
@@ -9889,40 +10487,23 @@ var DialogView = (function () {
             var sDiv = parseInt(etIntDivisions.text, 10) || 4;
             var kMove = parseInt(etIntMoveTeeth.text, 10) || 2;
             var z1Val = parseInt(etIntZ1.text, 10) || 8;
-            var z2Val = sDiv * kMove;
             var mVal = parseFloat(etModule.text) || 3.0;
             var aVal = parseFloat(etAlpha.text) || 20.0;
             var bVal = parseFloat(etBacklash.text) || 0.15;
-            var angleVal = parseFloat(etIntAngle.text) || 0.0;
-            var structVal = rbIntTwoLayer.value ? "two_layer" : "coplanar";
-            var clrVal = parseFloat(etIntLockClearance.text) || 0.15;
-            var reliefVal = chkIntTipRelief.value;
             var s1Val = parseFloat(etIntShaft1.text) || 5.0;
-            var s2Val = parseFloat(etIntShaft2.text) || 5.0;
 
-            var spec = {
+            showAddIntermittentModal({
                 m: mVal,
                 alphaDeg: aVal,
                 backlash: bVal,
                 divisions: sDiv,
                 moveTeeth: kMove,
                 z1: z1Val,
-                z2: z2Val,
-                angleDeg: angleVal,
-                intermittentStructure: structVal,
-                lockClearance: clrVal,
-                tipRelief: reliefVal,
-                shaftDiameter1: s1Val,
-                shaftDiameter2: s2Val
-            };
-
-            var newNodes = InvoluteMath.expandIntermittentPairToNodes(spec);
-            trainNodes = newNodes;
+                shaftDiameter: s1Val,
+                enableLock: true
+            });
             ddMechanism.selection = 0;
             switchMechanism(0);
-            refreshTrainList(trainNodes[1].id);
-            updatePreview();
-            alert("\u9593\u6b20\u6b6f\u8eca\u30da\u30a2\uff08" + trainNodes[0].id + ", " + trainNodes[1].id + "\uff09\u3092\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u306b\u5c55\u958b\u3057\u307e\u3057\u305f\u3002");
         };
 
         // ==========================================
@@ -10588,4 +11169,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.33');
+MainController.run('0.9.34');
