@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.34
+ * Version: 0.9.35
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -7719,23 +7719,7 @@ var DialogView = (function () {
         // --- TAB 1: GEAR CREATION ---
         // ==========================================
 
-        // 1. Mechanism Type Selector Panel (Placed FIRST as requested)
-        var pnlType = tabCreate.add("panel", undefined, "\u6a5f\u69cb\u30bf\u30a4\u30d7\u9078\u629e (Mechanism Type)");
-        pnlType.orientation = "row";
-        pnlType.alignChildren = ["left", "center"];
-        pnlType.spacing = 15;
-        pnlType.margins = 8;
-
-        pnlType.add("statictext", undefined, "\u6a5f\u69cb\u30bf\u30a4\u30d7:");
-        var ddMechanism = pnlType.add("dropdownlist", undefined, [
-            "\u5206\u5c90\u8f2a\u5217 (Branched Gear Train - Spur & Rack & Internal)",
-            "\u6a19\u6e96\u904a\u661f\u6b6f\u8eca (2K-H Planetary Set)",
-            "\u4e0d\u601d\u8b70\u904a\u661f\u6b6f\u8eca (3K Paradoxical Planetary)",
-            "\u9593\u6b20\u6b6f\u8eca\u6a5f\u69cb (Intermittent Gear Pair)"
-        ]);
-        ddMechanism.selection = 0;
-
-        // 2. Circle Object Topology Panel (Placed SECOND as requested)
+// 2. Circle Object Topology Panel (Placed SECOND as requested)
         var pnlCircle = tabCreate.add("panel", undefined, "\u5186\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u9023\u643a (Object-Driven Input)");
         pnlCircle.orientation = "column";
         pnlCircle.alignChildren = ["fill", "top"];
@@ -7797,12 +7781,12 @@ var DialogView = (function () {
         btnAutoBuildTrain.enabled = (selectedCircles.length > 1);
 
         // 3. Mechanism Configuration Panel
-        var pnlConfig = tabCreate.add("panel", undefined, "\u6b6f\u8eca\u8af8\u5143\u30fb\u69cb\u6210 (Mechanism Configuration)");
-        pnlConfig.orientation = "stack";
+        var pnlConfig = tabCreate.add("panel", undefined, "輪列構成・諸元 (Gear Train Configuration)");
+        pnlConfig.orientation = "column";
         pnlConfig.alignChildren = ["fill", "top"];
         pnlConfig.spacing = 8;
         pnlConfig.margins = 10;
-        pnlConfig.preferredSize.height = 360;
+        // pnlConfig preferredSize auto
 
         // Subpanel A: Branched Gear Train
         var pnlTrain = pnlConfig.add("group");
@@ -8022,205 +8006,7 @@ var DialogView = (function () {
         var btnDeleteNode = rowNodeBtns2.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
         var btnImportCSV = rowNodeBtns2.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
 
-        // --- View 2: Standard 2K-H Planetary ---
-        var grpPlanetary = pnlConfig.add("group");
-        grpPlanetary.orientation = "column";
-        grpPlanetary.alignment = ["fill", "top"];
-        grpPlanetary.alignChildren = ["fill", "top"];
-        grpPlanetary.spacing = 6;
-
-        var rowPlanetaryMode = grpPlanetary.add("group");
-        rowPlanetaryMode.orientation = "row";
-        rowPlanetaryMode.alignChildren = ["left", "center"];
-        rowPlanetaryMode.spacing = 8;
-        rowPlanetaryMode.add("statictext", undefined, "\u52d5\u4f5c\u30e2\u30fc\u30c9:");
-        var ddPlanetaryMode = rowPlanetaryMode.add("dropdownlist", undefined, [
-            "\u5185\u6b6f\u8eca\u56fa\u5b9a (Ring Fixed) [i = 1 + zr/zs]",
-            "\u592a\u967d\u56fa\u5b9a (Sun Fixed) [i = 1 + zs/zr]",
-            "\u30ad\u30e3\u30ea\u30a2\u56fa\u5b9a (Carrier Fixed) [i = -zr/zs]"
-        ]);
-        ddPlanetaryMode.selection = 0;
-
-        var rowPlanetaryTop = grpPlanetary.add("group");
-        rowPlanetaryTop.orientation = "row";
-        rowPlanetaryTop.alignChildren = ["left", "center"];
-        rowPlanetaryTop.spacing = 10;
-        rowPlanetaryTop.add("statictext", undefined, "\u592a\u967d (zs):");
-        var etPlanetaryZs = rowPlanetaryTop.add("edittext", undefined, "18");
-        etPlanetaryZs.characters = 4;
-        rowPlanetaryTop.add("statictext", undefined, "\u904a\u661f (zp):");
-        var etPlanetaryZp = rowPlanetaryTop.add("edittext", undefined, "18");
-        etPlanetaryZp.characters = 4;
-        rowPlanetaryTop.add("statictext", undefined, "\u5185\u6b6f (zr):");
-        var etPlanetaryZr = rowPlanetaryTop.add("edittext", undefined, "54");
-        etPlanetaryZr.characters = 4;
-        rowPlanetaryTop.add("statictext", undefined, "\u904a\u661f\u6570 (N):");
-        var etPlanetaryN = rowPlanetaryTop.add("edittext", undefined, "3");
-        etPlanetaryN.characters = 3;
-
-        var rowPlanetarySolve = grpPlanetary.add("group");
-        rowPlanetarySolve.orientation = "row";
-        rowPlanetarySolve.alignChildren = ["left", "center"];
-        rowPlanetarySolve.spacing = 6;
-        rowPlanetarySolve.add("statictext", undefined, "\u76ee\u6a19\u6bd4 i:");
-        var etPlanetaryTargetRatio = rowPlanetarySolve.add("edittext", undefined, "4.0");
-        etPlanetaryTargetRatio.characters = 4;
-        var btnPlanetarySolve = rowPlanetarySolve.add("button", undefined, "\u5019\u88dc\u691c\u7d22");
-        var btnPlanetaryClear = rowPlanetarySolve.add("button", undefined, "\u30af\u30ea\u30a2");
-        var ddPlanetaryCandidates = rowPlanetarySolve.add("dropdownlist", undefined, ["(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)"]);
-        ddPlanetaryCandidates.selection = 0;
-        var btnPlanetaryExpand = rowPlanetarySolve.add("button", undefined, "\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u3078\u5c55\u958b (Expand to Train)");
-
-
-        // --- View 3: 3K Paradoxical Planetary ---
-        var grpParadox = pnlConfig.add("group");
-        grpParadox.orientation = "column";
-        grpParadox.alignment = ["fill", "top"];
-        grpParadox.alignChildren = ["fill", "top"];
-        grpParadox.spacing = 6;
-
-        var rowParadoxTop = grpParadox.add("group");
-        rowParadoxTop.orientation = "row";
-        rowParadoxTop.alignChildren = ["left", "center"];
-        rowParadoxTop.spacing = 8;
-        rowParadoxTop.add("statictext", undefined, "\u592a\u967d (zs):");
-        var etParadoxZs = rowParadoxTop.add("edittext", undefined, "24");
-        etParadoxZs.characters = 4;
-        rowParadoxTop.add("statictext", undefined, "\u904a\u661f (zp):");
-        var etParadoxZp = rowParadoxTop.add("edittext", undefined, "18");
-        etParadoxZp.characters = 4;
-        rowParadoxTop.add("statictext", undefined, "\u56fa\u5b9a (zr1):");
-        var etParadoxZr1 = rowParadoxTop.add("edittext", undefined, "60");
-        etParadoxZr1.characters = 4;
-        rowParadoxTop.add("statictext", undefined, "\u51fa\u529b (zr2):");
-        var etParadoxZr2 = rowParadoxTop.add("edittext", undefined, "57");
-        etParadoxZr2.characters = 4;
-        rowParadoxTop.add("statictext", undefined, "\u904a\u661f\u6570 (N):");
-        var etParadoxN = rowParadoxTop.add("edittext", undefined, "3");
-        etParadoxN.characters = 3;
-
-        var rowParadoxSolve = grpParadox.add("group");
-        rowParadoxSolve.orientation = "row";
-        rowParadoxSolve.alignChildren = ["left", "center"];
-        rowParadoxSolve.spacing = 6;
-        rowParadoxSolve.add("statictext", undefined, "\u76ee\u6a19\u6bd4 i:");
-        var etParadoxTargetRatio = rowParadoxSolve.add("edittext", undefined, "-50.0");
-        etParadoxTargetRatio.characters = 5;
-        var btnParadoxSolve = rowParadoxSolve.add("button", undefined, "\u5019\u88dc\u691c\u7d22");
-        var btnParadoxClear = rowParadoxSolve.add("button", undefined, "\u30af\u30ea\u30a2");
-        var ddParadoxCandidates = rowParadoxSolve.add("dropdownlist", undefined, ["(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)"]);
-        ddParadoxCandidates.selection = 0;
-        var btnParadoxExpand = rowParadoxSolve.add("button", undefined, "\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u3078\u5c55\u958b (Expand to Train)");
-
-        // --- View 4: Intermittent Gear Pair ---
-        var grpIntermittent = pnlConfig.add("group");
-        grpIntermittent.orientation = "column";
-        grpIntermittent.alignment = ["fill", "top"];
-        grpIntermittent.alignChildren = ["fill", "top"];
-        grpIntermittent.spacing = 6;
-        grpIntermittent.visible = false;
-
-        // Kinematics Row 1: S, k, z1, z2, angle
-        var pnlIntKine = grpIntermittent.add("panel", undefined, "\u9593\u6b20\u30ad\u30cd\u30de\u30c6\u30a3\u30af\u30b9\u8af8\u5143 (Intermittent Kinematics)");
-        pnlIntKine.orientation = "column";
-        pnlIntKine.alignChildren = ["fill", "top"];
-        pnlIntKine.spacing = 6;
-        pnlIntKine.margins = 8;
-
-        var rowIntKine1 = pnlIntKine.add("group");
-        rowIntKine1.orientation = "row";
-        rowIntKine1.alignChildren = ["left", "center"];
-        rowIntKine1.spacing = 8;
-
-        rowIntKine1.add("statictext", undefined, "\u5f93\u52d5\u8eca\u5206\u5272\u6570(S):");
-        var etIntDivisions = rowIntKine1.add("edittext", undefined, "4");
-        etIntDivisions.characters = 3;
-
-        rowIntKine1.add("statictext", undefined, "\u9001\u308a\u6b6f\u6570(k):");
-        var etIntMoveTeeth = rowIntKine1.add("edittext", undefined, "2");
-        etIntMoveTeeth.characters = 3;
-
-        rowIntKine1.add("statictext", undefined, "\u539f\u52d5\u8eca\u6b6f\u6570(z1):");
-        var etIntZ1 = rowIntKine1.add("edittext", undefined, "8");
-        etIntZ1.characters = 3;
-
-        rowIntKine1.add("statictext", undefined, "\u5f93\u52d5\u8eca\u6b6f\u6570(z2=S\u00d7k):");
-        var etIntZ2 = rowIntKine1.add("edittext", undefined, "8");
-        etIntZ2.characters = 4;
-        etIntZ2.enabled = false;
-
-        rowIntKine1.add("statictext", undefined, "\u914d\u7f6e\u89d2\u5ea6(\u00b0):");
-        var etIntAngle = rowIntKine1.add("edittext", undefined, "0");
-        etIntAngle.characters = 4;
-
-        // Kinematics Row 2: Structure, Clearance, Tip Relief
-        var rowIntKine2 = pnlIntKine.add("group");
-        rowIntKine2.orientation = "row";
-        rowIntKine2.alignChildren = ["left", "center"];
-        rowIntKine2.spacing = 8;
-
-        rowIntKine2.add("statictext", undefined, "\u69cb\u9020\u5f62\u5f0f:");
-        var rbIntCoplanar = rowIntKine2.add("radiobutton", undefined, "\u540c\u4e00\u5e73\u9762\u5358\u5c64\u578b (1\u679a\u677f)");
-        var rbIntTwoLayer = rowIntKine2.add("radiobutton", undefined, "2\u5c64\u5f0f (\u7a4d\u5c64\u30d7\u30ec\u30fc\u30c8)");
-        rbIntCoplanar.value = true;
-
-        rowIntKine2.add("statictext", undefined, "  \u30ed\u30c3\u30af\u9699\u9593(mm):");
-        var etIntLockClearance = rowIntKine2.add("edittext", undefined, "0.15");
-        etIntLockClearance.characters = 4;
-
-        var chkIntTipRelief = rowIntKine2.add("checkbox", undefined, "\u6b6f\u5148\u7de9\u548c(Tip Relief)");
-        chkIntTipRelief.value = false;
-
-        var lblIntTwoLayerWarn = rowIntKine2.add("statictext", undefined, "\u203b2\u5c64\u5f0f\u306f\u4ed6\u6bb5\u30ae\u30a2\u3068\u306e\u7acb\u4f53\u5e72\u6e09\u3092\u30d7\u30e9\u30b0\u30a4\u30f3\u5074\u3067\u4fdd\u8a3c\u3057\u307e\u305b\u3093");
-        lblIntTwoLayerWarn.visible = false;
-        try {
-            var redGfx2 = lblIntTwoLayerWarn.graphics;
-            redGfx2.foregroundColor = redGfx2.newPen(redGfx2.PenType.SOLID_COLOR, [0.85, 0.0, 0.0, 1], 1);
-        } catch (eGfx2) {}
-
-        rbIntCoplanar.onClick = function () {
-            lblIntTwoLayerWarn.visible = false;
-        };
-        rbIntTwoLayer.onClick = function () {
-            lblIntTwoLayerWarn.visible = true;
-        };
-
-        // Kinematics Row 3: Shafts
-        var rowIntShaft = pnlIntKine.add("group");
-        rowIntShaft.orientation = "row";
-        rowIntShaft.alignChildren = ["left", "center"];
-        rowIntShaft.spacing = 10;
-
-        rowIntShaft.add("statictext", undefined, "\u539f\u52d5\u8eca\u8ef8\u5f84(mm):");
-        var etIntShaft1 = rowIntShaft.add("edittext", undefined, "5.0");
-        etIntShaft1.characters = 4;
-
-        rowIntShaft.add("statictext", undefined, "\u5f93\u52d5\u8eca\u8ef8\u5f84(mm):");
-        var etIntShaft2 = rowIntShaft.add("edittext", undefined, "5.0");
-        etIntShaft2.characters = 4;
-
-        // Panel: Computed Characteristics
-        var pnlIntCalc = grpIntermittent.add("panel", undefined, "\u8a08\u7b97\u7d50\u679c\u30fb\u904b\u52d5\u7279\u6027 (Kinematic Characteristics)");
-        pnlIntCalc.orientation = "row";
-        pnlIntCalc.alignChildren = ["left", "center"];
-        pnlIntCalc.spacing = 15;
-        pnlIntCalc.margins = 8;
-
-        var lblIntStats1 = pnlIntCalc.add("statictext", undefined, "1\u30b9\u30c6\u30c3\u30d7\u56de\u8ee2\u89d2: 90.0\u00b0");
-        var lblIntStats2 = pnlIntCalc.add("statictext", undefined, "\u99c6\u52d5\u89d2: 90.0\u00b0 / \u505c\u6b62\u89d2: 270.0\u00b0");
-        var lblIntStats3 = pnlIntCalc.add("statictext", undefined, "\u4e2d\u5fc3\u8ddd\u96e2 a: 32.0 mm");
-
-        // Action Buttons Row
-        var rowIntBtns = grpIntermittent.add("group");
-        rowIntBtns.orientation = "row";
-        rowIntBtns.alignChildren = ["left", "center"];
-        rowIntBtns.spacing = 8;
-
-        var btnIntExpand = rowIntBtns.add("button", undefined, "\u8f2a\u5217\u30c6\u30fc\u30d6\u30eb\u3078\u5c55\u958b (Expand to Train)");
-        var btnIntReset = rowIntBtns.add("button", undefined, "\u6a19\u6e964\u5206\u5272\u306b\u30ea\u30bb\u30c3\u30c8 (Reset 4-Stop)");
-
-
-        // 4. Gear Creation Options Panel (6 Specific User Options)
+// 4. Gear Creation Options Panel (6 Specific User Options)
         var pnlCreationOptions = tabCreate.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3 (Creation Options)");
         pnlCreationOptions.orientation = "column";
         pnlCreationOptions.alignChildren = ["fill", "top"];
@@ -8467,25 +8253,7 @@ var DialogView = (function () {
             return clean;
         }
 
-        var trainNodes = [
-            {
-                id: "G1",
-                kind: "SPUR",
-                gearType: "SPUR",
-                z: 18,
-                m: 2.0,
-                alphaDeg: 20.0,
-                shaftDiameter: 5.0,
-                shaftType: "丸穴",
-                parentId: null,
-                relationType: "ROOT",
-                angleDeg: 0,
-                relativeAngleDeg: 0,
-                stageIndex: 1,
-                layerIndex: 1,
-                x: 0
-            }
-        ];
+        var trainNodes = [];
 
         function resolveNodeStage(nd) {
             if (nd.stageIndex !== undefined && nd.stageIndex !== null && !isNaN(nd.stageIndex) && nd.stageIndex > 0) {
@@ -8733,7 +8501,25 @@ var DialogView = (function () {
         }
 
         function loadSelectedNodeToFields() {
-            if (!trainListBox.selection) return;
+            if (!trainListBox.selection || !trainNodes || trainNodes.length === 0) {
+                if (typeof pnlNodeDetail !== "undefined" && pnlNodeDetail) pnlNodeDetail.enabled = false;
+                etNodeId.text = "";
+                lblIdStatus.text = "";
+                etNodeZ.text = "";
+                ddNodeParent.removeAll();
+                ddNodeParent.add("item", "(なし / ルート)");
+                ddNodeParent.selection = 0;
+                etNodeAngle.text = "";
+                etNodeShaft.text = "";
+                etNodeBackHeight.text = "";
+                etNodeShift.text = "";
+                etNodeStage.text = "";
+                etNodeModule.text = "";
+                etNodeAlpha.text = "";
+                etNodeBacklash.text = "";
+                return;
+            }
+            if (typeof pnlNodeDetail !== "undefined" && pnlNodeDetail) pnlNodeDetail.enabled = true;
             var idx = trainListBox.selection.index;
             var nd = trainNodes[idx];
             if (!nd) return;
@@ -10080,10 +9866,7 @@ var DialogView = (function () {
         };
 
         btnDeleteNode.onClick = function () {
-            if (trainNodes.length <= 1) {
-                alert("輪列には最低1つのギアが必要です。");
-                return;
-            }
+            if (!trainNodes || trainNodes.length === 0) return;
             if (!trainListBox.selection) return;
             var delIdx = trainListBox.selection.index;
             if (delIdx < 0 || delIdx >= trainNodes.length || !trainNodes[delIdx]) return;
@@ -10096,8 +9879,12 @@ var DialogView = (function () {
                 }
             }
             trainNodes.splice(delIdx, 1);
-            var nextSelectId = trainNodes[Math.min(delIdx, trainNodes.length - 1)].id;
-            refreshTrainList(nextSelectId);
+            if (trainNodes.length > 0) {
+                var nextSelectId = trainNodes[Math.min(delIdx, trainNodes.length - 1)].id;
+                refreshTrainList(nextSelectId);
+            } else {
+                refreshTrainList(null);
+            }
             updatePreview();
         };
 
@@ -10136,24 +9923,8 @@ var DialogView = (function () {
             }
         };
 
-        // Switch Mechanism Handler
-        function switchMechanism(idx) {
-            pnlTrain.visible = (idx === 0);
-            if (typeof grpPlanetary !== "undefined" && grpPlanetary) grpPlanetary.visible = (idx === 1);
-            if (typeof grpParadox !== "undefined" && grpParadox) grpParadox.visible = (idx === 2);
-            if (typeof grpIntermittent !== "undefined" && grpIntermittent) {
-                grpIntermittent.visible = (idx === 3);
-                if (idx === 3 && typeof updateIntermittentStats === "function") {
-                    updateIntermittentStats();
-                }
-            }
-            updatePreview();
-        }
-        ddMechanism.onChange = function () {
-            switchMechanism(ddMechanism.selection ? ddMechanism.selection.index : 0);
-        };
-
-        // Rescan Circles Handler
+        // Mechanism type switching dummy (always branched gear train)
+        function switchMechanism(idx) {}// Rescan Circles Handler
         btnRescan.onClick = function () {
             doRescan();
         };
@@ -10247,266 +10018,12 @@ var DialogView = (function () {
 
         function updatePreview() {
             var m = parseFloat(etModule.text) || 2.0;
-            var mechIdx = ddMechanism.selection ? ddMechanism.selection.index : 0;
-            if (mechIdx === 0) {
-                lblCalcSummary.text = "\u8f2a\u5217\u30ce\u30fc\u30c9: " + trainNodes.length + " \u500b | \u6a19\u6e96\u30e2\u30b8\u30e5\u30fc\u30eb: " + m;
-            } else if (mechIdx === 1) {
-                var zs = parseInt(etPlanetaryZs.text, 10);
-                var zp = parseInt(etPlanetaryZp.text, 10);
-                var zr = parseInt(etPlanetaryZr.text, 10);
-                var iVal = (zs + zr) / zs;
-                lblCalcSummary.text = "\u904a\u661f (2K-H): S:" + zs + " P:" + zp + " R:" + zr + " | \u6e1b\u901f\u6bd4 i=" + iVal.toFixed(2);
-            } else if (mechIdx === 2) {
-                var sVal = parseInt(etParadoxZs.text, 10);
-                var r1Val = parseInt(etParadoxZr1.text, 10);
-                var r2Val = parseInt(etParadoxZr2.text, 10);
-                var diffRatio = r2Val / (r2Val - r1Val);
-                lblCalcSummary.text = "\u4e0d\u601d\u8b70\u904a\u661f (3K): S:" + sVal + " R1:" + r1Val + " R2:" + r2Val + " | \u6e1b\u901f\u6bd4 i=" + diffRatio.toFixed(1);
-            } else if (mechIdx === 3) {
-                var sDiv = parseInt(etIntDivisions.text, 10) || 4;
-                var kMove = parseInt(etIntMoveTeeth.text, 10) || 2;
-                var z1Val = parseInt(etIntZ1.text, 10) || 8;
-                var z2Val = parseInt(etIntZ2.text, 10) || (sDiv * kMove);
-                var aVal = (m * (z1Val + z2Val)) / 2.0;
-                lblCalcSummary.text = "\u9593\u6b20\u6b6f\u8eca\u30da\u30a2: \u539f\u52d5(z=" + z1Val + ", k=" + kMove + ") / \u5f93\u52d5(" + sDiv + "\u5206\u5272, z=" + z2Val + ") | \u4e2d\u5fc3\u8ddd\u96e2 a=" + aVal.toFixed(1) + " mm";
-            }
-        }
-
-        // Solver Handlers
-        btnPlanetarySolve.onClick = function () {
-            var mode = "ring_fixed";
-            if (ddPlanetaryMode && ddPlanetaryMode.selection) {
-                if (ddPlanetaryMode.selection.index === 1) mode = "sun_fixed";
-                else if (ddPlanetaryMode.selection.index === 2) mode = "carrier_fixed";
-            }
-            var target = parseFloat(etPlanetaryTargetRatio.text);
-            var m = parseFloat(etModule.text) || 2.0;
-            var alphaDeg = parseFloat(etAlpha.text) || 20.0;
-            var N = parseInt(etPlanetaryN.text, 10);
-            var zs = parseInt(etPlanetaryZs.text, 10);
-            var zp = parseInt(etPlanetaryZp.text, 10);
-            var zr = parseInt(etPlanetaryZr.text, 10);
-
-            var specs = {
-                mode: mode,
-                targetRatio: (!isNaN(target) && target > 0) ? target : null,
-                m: m,
-                alphaDeg: alphaDeg,
-                numPlanets: (!isNaN(N) && N > 0) ? N : null,
-                fixedZs: (!isNaN(zs) && zs > 0) ? zs : null,
-                fixedZp: (!isNaN(zp) && zp > 0) ? zp : null,
-                fixedZr: (!isNaN(zr) && zr > 0) ? zr : null,
-                tol: 0.10
-            };
-
-            var list = InvoluteMath.solveStandardPlanetary(specs);
-            ddPlanetaryCandidates.removeAll();
-            if (list.length === 0) {
-                ddPlanetaryCandidates.add("item", "(\u6761\u4ef6\u306b\u5408\u81f4\u3059\u308b\u5019\u88dc\u304c\u3042\u308a\u307e\u305b\u3093)");
-                ddPlanetaryCandidates.selection = 0;
+            if (!trainNodes || trainNodes.length === 0) {
+                lblCalcSummary.text = "輪列ノード: 0 個 (ギアを追加してください)";
             } else {
-                for (var i = 0; i < list.length; i++) {
-                    ddPlanetaryCandidates.add("item", list[i].label);
-                }
-                ddPlanetaryCandidates.selection = 0;
-                etPlanetaryZs.text = String(list[0].zs);
-                etPlanetaryZp.text = String(list[0].zp);
-                etPlanetaryZr.text = String(list[0].zr);
-                etPlanetaryN.text = String(list[0].numPlanets);
-                updatePreview();
+                lblCalcSummary.text = "輪列ノード: " + trainNodes.length + " 個 | 標準モジュール: " + m;
             }
-        };
-
-        btnPlanetaryClear.onClick = function () {
-            etPlanetaryZs.text = "";
-            etPlanetaryZp.text = "";
-            etPlanetaryZr.text = "";
-            etPlanetaryN.text = "";
-            etPlanetaryTargetRatio.text = "";
-            ddPlanetaryCandidates.removeAll();
-            ddPlanetaryCandidates.add("item", "(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)");
-            ddPlanetaryCandidates.selection = 0;
-        };
-
-        btnPlanetaryExpand.onClick = function () {
-            showAddPlanetaryModal({
-                zs: parseInt(etPlanetaryZs.text, 10) || 18,
-                zp: parseInt(etPlanetaryZp.text, 10) || 18,
-                zr: parseInt(etPlanetaryZr.text, 10) || 54,
-                numPlanets: parseInt(etPlanetaryN.text, 10) || 3
-            });
-            ddMechanism.selection = 0;
-            switchMechanism(0);
-        };
-
-        ddPlanetaryCandidates.onChange = function () {
-            if (!ddPlanetaryCandidates.selection) return;
-            var txt = ddPlanetaryCandidates.selection.text;
-            var mS = txt.match(/S:(\d+)/);
-            var mP = txt.match(/P:(\d+)/);
-            var mR = txt.match(/R:(\d+)/);
-            var mN = txt.match(/N=(\d+)/);
-            if (mS && mP && mR) {
-                etPlanetaryZs.text = mS[1];
-                etPlanetaryZp.text = mP[1];
-                etPlanetaryZr.text = mR[1];
-                if (mN) etPlanetaryN.text = mN[1];
-                updatePreview();
-            }
-        };
-
-        btnParadoxSolve.onClick = function () {
-            var target = parseFloat(etParadoxTargetRatio.text);
-            var m = parseFloat(etModule.text) || 2.0;
-            var alphaDeg = parseFloat(etAlpha.text) || 20.0;
-            var N = parseInt(etParadoxN.text, 10);
-            var zs = parseInt(etParadoxZs.text, 10);
-            var zp = parseInt(etParadoxZp.text, 10);
-            var zr1 = parseInt(etParadoxZr1.text, 10);
-            var zr2 = parseInt(etParadoxZr2.text, 10);
-
-            var specs = {
-                targetRatio: (!isNaN(target) && target !== 0) ? target : null,
-                m: m,
-                alphaDeg: alphaDeg,
-                numPlanets: (!isNaN(N) && N > 0) ? N : null,
-                fixedZs: (!isNaN(zs) && zs > 0) ? zs : null,
-                fixedZp: (!isNaN(zp) && zp > 0) ? zp : null,
-                fixedZr1: (!isNaN(zr1) && zr1 > 0) ? zr1 : null,
-                fixedZr2: (!isNaN(zr2) && zr2 > 0) ? zr2 : null,
-                tol: 0.20
-            };
-
-            var list = InvoluteMath.solveParadoxicalPlanetary(specs);
-            ddParadoxCandidates.removeAll();
-            if (list.length === 0) {
-                ddParadoxCandidates.add("item", "(\u6761\u4ef6\u306b\u5408\u81f4\u3059\u308b\u5019\u88dc\u304c\u3042\u308a\u307e\u305b\u3093)");
-                ddParadoxCandidates.selection = 0;
-            } else {
-                for (var i = 0; i < list.length; i++) {
-                    ddParadoxCandidates.add("item", list[i].label);
-                }
-                ddParadoxCandidates.selection = 0;
-                etParadoxZs.text = String(list[0].zs);
-                etParadoxZp.text = String(list[0].zp);
-                etParadoxZr1.text = String(list[0].zr1);
-                etParadoxZr2.text = String(list[0].zr2);
-                etParadoxN.text = String(list[0].numPlanets);
-                updatePreview();
-            }
-        };
-
-        btnParadoxClear.onClick = function () {
-            etParadoxZs.text = "";
-            etParadoxZp.text = "";
-            etParadoxZr1.text = "";
-            etParadoxZr2.text = "";
-            etParadoxN.text = "";
-            etParadoxTargetRatio.text = "";
-            ddParadoxCandidates.removeAll();
-            ddParadoxCandidates.add("item", "(\u691c\u7d22\u30dc\u30bf\u30f3\u3092\u62bc\u3057\u3066\u304f\u3060\u3055\u3044)");
-            ddParadoxCandidates.selection = 0;
-        };
-
-        btnParadoxExpand.onClick = function () {
-            showAddParadoxModal({
-                zs: parseInt(etParadoxZs.text, 10) || 24,
-                zp: parseInt(etParadoxZp.text, 10) || 18,
-                zr1: parseInt(etParadoxZr1.text, 10) || 60,
-                zr2: parseInt(etParadoxZr2.text, 10) || 57,
-                numPlanets: parseInt(etParadoxN.text, 10) || 3
-            });
-            ddMechanism.selection = 0;
-            switchMechanism(0);
-        };
-
-        ddParadoxCandidates.onChange = function () {
-            if (!ddParadoxCandidates.selection) return;
-            var txt = ddParadoxCandidates.selection.text;
-            var mS = txt.match(/S:(\d+)/);
-            var mP = txt.match(/P:(\d+)/);
-            var mR1 = txt.match(/R1:(\d+)/);
-            var mR2 = txt.match(/R2:(\d+)/);
-            var mN = txt.match(/N=(\d+)/);
-            if (mS && mP && mR1 && mR2) {
-                etParadoxZs.text = mS[1];
-                etParadoxZp.text = mP[1];
-                etParadoxZr1.text = mR1[1];
-                etParadoxZr2.text = mR2[1];
-                if (mN) etParadoxN.text = mN[1];
-                updatePreview();
-            }
-        };
-
-        // Intermittent Mode Handlers
-        function updateIntermittentStats() {
-            var sDiv = parseInt(etIntDivisions.text, 10);
-            if (isNaN(sDiv) || sDiv < 2) sDiv = 2;
-            var kMove = parseInt(etIntMoveTeeth.text, 10);
-            if (isNaN(kMove) || kMove < 1) kMove = 1;
-            var z1Val = parseInt(etIntZ1.text, 10);
-            if (isNaN(z1Val) || z1Val < 3) z1Val = 3;
-
-            var z2Val = sDiv * kMove;
-            etIntZ2.text = String(z2Val);
-
-            var mVal = parseFloat(etModule.text) || 3.0;
-
-            var stepAngle = 360.0 / sDiv;
-            var motionAngle = 360.0 * (kMove / z1Val);
-            if (motionAngle > 360.0) motionAngle = 360.0;
-            var dwellAngle = 360.0 - motionAngle;
-            var aDist = (mVal * (z1Val + z2Val)) / 2.0;
-
-            lblIntStats1.text = "1\u30b9\u30c6\u30c3\u30d7\u56de\u8ee2\u89d2: " + stepAngle.toFixed(1) + "\u00b0";
-            lblIntStats2.text = "\u99c6\u52d5\u89d2: " + motionAngle.toFixed(1) + "\u00b0 / \u505c\u6b62\u89d2: " + dwellAngle.toFixed(1) + "\u00b0";
-            lblIntStats3.text = "\u4e2d\u5fc3\u8ddd\u96e2 a: " + aDist.toFixed(1) + " mm";
-        }
-
-        etIntDivisions.onChange = function () { updateIntermittentStats(); updatePreview(); };
-        etIntMoveTeeth.onChange = function () { updateIntermittentStats(); updatePreview(); };
-        etIntZ1.onChange = function () { updateIntermittentStats(); updatePreview(); };
-
-        btnIntReset.onClick = function () {
-            etIntDivisions.text = "4";
-            etIntMoveTeeth.text = "2";
-            etIntZ1.text = "8";
-            etIntAngle.text = "0";
-            rbIntCoplanar.value = true;
-            rbIntTwoLayer.value = false;
-            lblIntTwoLayerWarn.visible = false;
-            etIntLockClearance.text = "0.15";
-            chkIntTipRelief.value = false;
-            etIntShaft1.text = "5.0";
-            etIntShaft2.text = "5.0";
-            updateIntermittentStats();
-            updatePreview();
-        };
-
-        btnIntExpand.onClick = function () {
-            var sDiv = parseInt(etIntDivisions.text, 10) || 4;
-            var kMove = parseInt(etIntMoveTeeth.text, 10) || 2;
-            var z1Val = parseInt(etIntZ1.text, 10) || 8;
-            var mVal = parseFloat(etModule.text) || 3.0;
-            var aVal = parseFloat(etAlpha.text) || 20.0;
-            var bVal = parseFloat(etBacklash.text) || 0.15;
-            var s1Val = parseFloat(etIntShaft1.text) || 5.0;
-
-            showAddIntermittentModal({
-                m: mVal,
-                alphaDeg: aVal,
-                backlash: bVal,
-                divisions: sDiv,
-                moveTeeth: kMove,
-                z1: z1Val,
-                shaftDiameter: s1Val,
-                enableLock: true
-            });
-            ddMechanism.selection = 0;
-            switchMechanism(0);
-        };
-
-        // ==========================================
+        }// ==========================================
         // Common Action Footer
         // ==========================================
         var grpBtns = win.add("group");
@@ -10557,9 +10074,7 @@ var DialogView = (function () {
                 var m = parseFloat(etModule.text);
                 var alphaDeg = parseFloat(etAlpha.text);
                 var backlash = parseFloat(etBacklash.text) || 0;
-                var modeIdx = ddMechanism.selection ? ddMechanism.selection.index : 0;
-
-                if (isNaN(m) || m <= 0) {
+if (isNaN(m) || m <= 0) {
                     alert("\u6709\u52b9\u306a\u30e2\u30b8\u30e5\u30fc\u30eb(>0)\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
                     return;
                 }
@@ -10652,7 +10167,11 @@ var DialogView = (function () {
 
                 var payload = null;
 
-                if (modeIdx === 0) { // Gear Train (Spur & Internal & Rack)
+                // Unified branched gear train execution
+                if (!trainNodes || trainNodes.length === 0) {
+                    alert("輪列にギアが追加されていません。\n[+ 外歯車追加] や [+ 間欠歯車ペア追加] などのボタンからギアを作成してください。");
+                    return;
+                }
                     if (!trainNodes || trainNodes.length === 0) {
                         alert("\u8f2a\u5217\u306b\u306f\u6700\u4f4e1\u3064\u306e\u30ae\u30a2\u304c\u5fc5\u8981\u3067\u3059\u3002");
                         return;
@@ -10735,78 +10254,6 @@ var DialogView = (function () {
                         mechanismType: "branched",
                         nodes: trainNodes
                     };
-                } else if (modeIdx === 1) { // 2K-H Planetary
-                    var zs = parseInt(etPlanetaryZs.text, 10);
-                    var zp = parseInt(etPlanetaryZp.text, 10);
-                    var zr = parseInt(etPlanetaryZr.text, 10);
-                    var N = parseInt(etPlanetaryN.text, 10) || 3;
-                    if (isNaN(zs) || isNaN(zp) || isNaN(zr) || zr !== (zs + 2 * zp)) {
-                        alert("\u540c\u5fc3\u6761\u4ef6\u304c\u6210\u7acb\u3057\u3066\u3044\u307e\u305b\u3093 (zr \u306f zs + 2*zp \u3068\u7b49\u3057\u304f\u306a\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u305b\u3093)\u3002");
-                        return;
-                    }
-                    payload = {
-                        mechanismType: "planetary",
-                        zs: zs,
-                        zp: zp,
-                        zr: zr,
-                        numPlanets: N,
-                        rimThickness: 3.0 * m
-                    };
-                } else if (modeIdx === 2) { // 3K Paradoxical
-                    var zs = parseInt(etParadoxZs.text, 10);
-                    var zp = parseInt(etParadoxZp.text, 10);
-                    var zr1 = parseInt(etParadoxZr1.text, 10);
-                    var zr2 = parseInt(etParadoxZr2.text, 10);
-                    var N = parseInt(etParadoxN.text, 10) || 3;
-                    if (isNaN(zs) || isNaN(zp) || isNaN(zr1) || isNaN(zr2) || zr1 !== (zs + 2 * zp)) {
-                        alert("\u56fa\u5b9a\u5074\u5185\u6b6f\u8eca\u306e\u540c\u5fc3\u6761\u4ef6\u304c\u6210\u7acb\u3057\u3066\u3044\u307e\u305b\u3093 (zr1 = zs + 2*zp)\u3002");
-                        return;
-                    }
-                    payload = {
-                        mechanismType: "paradoxical",
-                        zs: zs,
-                        zp: zp,
-                        zr1: zr1,
-                        zr2: zr2,
-                        numPlanets: N,
-                        rimThickness: 3.0 * m
-                    };
-                } else if (modeIdx === 3) { // Intermittent Gear Pair
-                    var sDiv = parseInt(etIntDivisions.text, 10) || 4;
-                    var kMove = parseInt(etIntMoveTeeth.text, 10) || 2;
-                    var z1Val = parseInt(etIntZ1.text, 10) || 8;
-                    var z2Val = parseInt(etIntZ2.text, 10) || (sDiv * kMove);
-                    var intAngle = parseFloat(etIntAngle.text) || 0.0;
-                    var intStruct = rbIntTwoLayer.value ? "two_layer" : "coplanar";
-                    var intClr = parseFloat(etIntLockClearance.text) || 0.15;
-                    var intRelief = chkIntTipRelief.value;
-                    var s1Val = parseFloat(etIntShaft1.text) || 5.0;
-                    var s2Val = parseFloat(etIntShaft2.text) || 5.0;
-
-                    var intSpec = {
-                        m: m,
-                        alphaDeg: alpha,
-                        backlash: backlash,
-                        divisions: sDiv,
-                        moveTeeth: kMove,
-                        z1: z1Val,
-                        z2: z2Val,
-                        angleDeg: intAngle,
-                        intermittentStructure: intStruct,
-                        lockClearance: intClr,
-                        tipRelief: intRelief,
-                        shaftDiameter1: s1Val,
-                        shaftDiameter2: s2Val
-                    };
-
-                    var intNodes = InvoluteMath.expandIntermittentPairToNodes(intSpec);
-
-                    payload = {
-                        mechanismType: "intermittent",
-                        intermittentSpec: intSpec,
-                        nodes: intNodes
-                    };
-                }
 
                 // Auto-save preferences to local storage on draw
                 try {
@@ -10835,16 +10282,8 @@ var DialogView = (function () {
             });
         } catch (ePrefLoad) {}
 
-        // If G1 is the only gear, sync its specs with loaded preferences
-        if (trainNodes && trainNodes.length === 1 && trainNodes[0].id === "G1") {
-            trainNodes[0].m = parseFloat(etModule.text) || 2.0;
-            trainNodes[0].alphaDeg = parseFloat(etAlpha.text) || 20.0;
-            trainNodes[0].shaftDiameter = parseFloat(etDefShaft.text) || 5.0;
-            trainNodes[0].shaftType = ddDefShaftType.selection ? ddDefShaftType.selection.text : "丸穴";
-            refreshTrainList("G1");
-        }
-
-        switchMechanism(0);
+        refreshTrainList(null);
+        updatePreview();
         win.layout.layout(true);
         if (win.layout && typeof win.layout.resize === "function") {
             win.layout.resize();
@@ -11169,4 +10608,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.34');
+MainController.run('0.9.35');
