@@ -8339,6 +8339,7 @@ var DialogView = (function () {
                 targetNode.m = driver.m;
                 targetNode.alphaDeg = driver.alphaDeg;
                 targetNode.backlash = driver.backlash;
+                if (driver.tipRounding !== undefined) { targetNode.tipRounding = driver.tipRounding; }
             }
         }
 
@@ -8353,6 +8354,7 @@ var DialogView = (function () {
                         n.m = editedNode.m;
                         n.alphaDeg = editedNode.alphaDeg;
                         n.backlash = editedNode.backlash;
+                        if (editedNode.tipRounding !== undefined) { n.tipRounding = editedNode.tipRounding; }
                         syncNodeProperties(n);
                     }
                 }
@@ -8371,6 +8373,7 @@ var DialogView = (function () {
             nd.m = (nd.m !== undefined && nd.m !== null && !isNaN(nd.m)) ? parseFloat(nd.m) : (parseFloat(etModule.text) || 2.0);
             nd.alphaDeg = (nd.alphaDeg !== undefined && nd.alphaDeg !== null && !isNaN(nd.alphaDeg)) ? parseFloat(nd.alphaDeg) : (parseFloat(etAlpha.text) || 20.0);
             nd.backlash = (nd.backlash !== undefined && nd.backlash !== null && !isNaN(nd.backlash)) ? parseFloat(nd.backlash) : (parseFloat(etBacklash.text) || 0.15);
+            nd.tipRounding = (nd.tipRounding !== undefined && nd.tipRounding !== null && !isNaN(nd.tipRounding)) ? parseFloat(nd.tipRounding) : (parseFloat(etDefTipRounding.text) || 0.0);
             nd.x = (nd.x !== undefined && nd.x !== null && !isNaN(nd.x)) ? parseFloat(nd.x) : 0.0;
             
             var relAngle = (nd.relativeAngleDeg !== undefined && !isNaN(nd.relativeAngleDeg)) ? parseFloat(nd.relativeAngleDeg) : (parseFloat(nd.angleDeg) || 0.0);
@@ -8598,6 +8601,7 @@ var DialogView = (function () {
                 etNodeModule.text = String(nd.m);
                 etNodeAlpha.text = String(nd.alphaDeg);
                 etNodeBacklash.text = String(nd.backlash);
+                etNodeTipRounding.text = String(nd.tipRounding !== undefined ? nd.tipRounding : 0.0);
 
                 // Intermittent Mode synchronization
                 var intRole = nd.intermittentRole || "NONE";
@@ -8713,6 +8717,7 @@ var DialogView = (function () {
             nd.m = parseFloat(etNodeModule.text) || 2.0;
             nd.alphaDeg = parseFloat(etNodeAlpha.text) || 20.0;
             nd.backlash = parseFloat(etNodeBacklash.text) || 0.15;
+            nd.tipRounding = parseFloat(etNodeTipRounding.text) || 0.0;
 
             var modeIdx = ddIntermittentMode.selection ? ddIntermittentMode.selection.index : 0;
             if (modeIdx === 1) {
@@ -8875,6 +8880,7 @@ var DialogView = (function () {
                 etNodeModule.text = String(driver.m);
                 etNodeAlpha.text = String(driver.alphaDeg);
                 etNodeBacklash.text = String(driver.backlash);
+                etNodeTipRounding.text = String(driver.tipRounding !== undefined ? driver.tipRounding : 0.0);
             }
             onFieldInputChanged();
         };
@@ -8884,6 +8890,8 @@ var DialogView = (function () {
         etNodeAlpha.onChange = onFieldInputChanged;
         etNodeBacklash.onChanging = onFieldInputChanged;
         etNodeBacklash.onChange = onFieldInputChanged;
+        etNodeTipRounding.onChanging = onFieldInputChanged;
+        etNodeTipRounding.onChange = onFieldInputChanged;
 
         // Unique ID Change Button Handler
         btnChangeId.onClick = function () {
