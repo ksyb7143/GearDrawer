@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.35
+ * Version: 0.9.36
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -7300,31 +7300,42 @@ var DialogView = (function () {
         var currentStyles = cloneObj(STYLE_PRESETS.laser);
 
         // ==========================================
-        // Main TabbedPanel Structure
+        // Main 2-Pane Horizontal Layout
         // ==========================================
-        var tabMain = win.add("tabbedpanel");
-        tabMain.alignment = ["fill", "fill"];
-        tabMain.alignChildren = ["fill", "top"];
+        win.orientation = "column";
+        win.alignChildren = ["fill", "top"];
+        win.spacing = 8;
+        win.margins = 10;
+        win.preferredSize.width = 1120;
+        win.preferredSize.height = 780;
 
-        // Tab 1: Gear Creation (Main)
-        var tabCreate = tabMain.add("tab", undefined, "\u6b6f\u8eca\u4f5c\u6210 (Main)");
-        tabCreate.alignChildren = ["fill", "top"];
-        tabCreate.spacing = 5;
-        tabCreate.margins = 6;
+        var grpPanes = win.add("group");
+        grpPanes.orientation = "row";
+        grpPanes.alignment = ["fill", "fill"];
+        grpPanes.alignChildren = ["fill", "fill"];
+        grpPanes.spacing = 10;
 
-        // Tab 2: Standard Preferences (Settings)
-        var tabSettings = tabMain.add("tab", undefined, "\u6a19\u6e96\u8a2d\u5b9a (Preferences)");
-        tabSettings.alignChildren = ["fill", "top"];
-        tabSettings.spacing = 6;
-        tabSettings.margins = 6;
+        // Left Pane: Circle Input & Gear Train Configuration
+        var paneLeft = grpPanes.add("group");
+        paneLeft.orientation = "column";
+        paneLeft.alignChildren = ["fill", "top"];
+        paneLeft.preferredSize.width = 630;
+        paneLeft.spacing = 6;
+
+        // Right Pane: CAD/CAM Styles, Geometry Options, Creation Options & Defaults
+        var paneRight = grpPanes.add("group");
+        paneRight.orientation = "column";
+        paneRight.alignChildren = ["fill", "top"];
+        paneRight.preferredSize.width = 460;
+        paneRight.spacing = 6;
 
         // ==========================================
-        // --- TAB 2: STANDARD PREFERENCES ---
-        // (Instantiated first so variables are accessible in Tab 1)
+        // --- RIGHT PANE: STYLES, OPTIONS & SETTINGS ---
+        // (Instantiated first so default variables are accessible in Left Pane)
         // ==========================================
 
         // 1. General Settings Panel (Renamed from Default Specs, unit removed from module)
-        var pnlCommon = tabSettings.add("panel", undefined, "\u57fa\u672c\u8a2d\u5b9a (General Settings)");
+        var pnlCommon = paneRight.add("panel", undefined, "\u57fa\u672c\u8a2d\u5b9a (General Settings)");
         pnlCommon.orientation = "column";
         pnlCommon.alignChildren = ["fill", "top"];
         pnlCommon.spacing = 6;
@@ -7339,12 +7350,14 @@ var DialogView = (function () {
         var etAlpha = rowDef1.add("edittext", undefined, "20"); etAlpha.characters = 4;
         rowDef1.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7 (mm):");
         var etBacklash = rowDef1.add("edittext", undefined, "0.15"); etBacklash.characters = 4;
-        rowDef1.add("statictext", undefined, "\u30ab\u30fc\u30d5\u88dc\u6b63 (mm):");
-        var etKerf = rowDef1.add("edittext", undefined, "0.0"); etKerf.characters = 4;
+        rowDef1.add("statictext", undefined, "\u6b6f\u5148\u4e38\u307f (mm):");
+        var etDefTipRounding = rowDef1.add("edittext", undefined, "0.0"); etDefTipRounding.characters = 4;
 
         var rowDef2 = pnlCommon.add("group");
         rowDef2.orientation = "row";
         rowDef2.spacing = 10;
+        rowDef2.add("statictext", undefined, "\u30ab\u30fc\u30d5\u88dc\u6b63 (mm):");
+        var etKerf = rowDef2.add("edittext", undefined, "0.0"); etKerf.characters = 4;
         rowDef2.add("statictext", undefined, "\u6a19\u6e96\u8ef8\u7a74\u5f84 (mm):");
         var etDefShaft = rowDef2.add("edittext", undefined, "5.0"); etDefShaft.characters = 4;
         rowDef2.add("statictext", undefined, "\u8ef8\u7a74\u5f62\u72b6:");
@@ -7357,7 +7370,7 @@ var DialogView = (function () {
         rbDefThickRoot.value = true;
 
         // 2. CAD / CAM Styles & Precision Panel
-        var pnlQuality = tabSettings.add("panel", undefined, "\u63cf\u753b\u30b9\u30bf\u30a4\u30eb\u30fbCAD/CAM\u4ed5\u69d8 (Styles & Appearances)");
+        var pnlQuality = paneRight.add("panel", undefined, "\u63cf\u753b\u30b9\u30bf\u30a4\u30eb\u30fbCAD/CAM\u4ed5\u69d8 (Styles & Appearances)");
         pnlQuality.orientation = "column";
         pnlQuality.alignChildren = ["fill", "top"];
         pnlQuality.spacing = 6;
@@ -7398,36 +7411,48 @@ var DialogView = (function () {
             else if (idx === 2) currentStyles = cloneObj(STYLE_PRESETS.cnc);
         };
 
-        // 3. Standard Creation Options Defaults Panel
-        var pnlStdOptions = tabSettings.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3\u521d\u671f\u8a2d\u5b9a (Default Creation Options)");
-        pnlStdOptions.orientation = "column";
-        pnlStdOptions.alignChildren = ["fill", "top"];
-        pnlStdOptions.spacing = 4;
-        pnlStdOptions.margins = 6;
+        // 3. Gear Creation Options Panel
+        var pnlCreationOptions = paneRight.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3 (Creation Options)");
+        pnlCreationOptions.orientation = "column";
+        pnlCreationOptions.alignChildren = ["fill", "top"];
+        pnlCreationOptions.spacing = 4;
+        pnlCreationOptions.margins = 6;
 
-        var rowOptDef1 = pnlStdOptions.add("group");
-        rowOptDef1.orientation = "row";
-        rowOptDef1.spacing = 15;
-        var chkDefCompound = rowOptDef1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
-        chkDefCompound.value = true;
-        var chkDefPitchSameLayer = rowOptDef1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
-        chkDefPitchSameLayer.value = false;
-        var chkDefCenterSameGroup = rowOptDef1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
-        chkDefCenterSameGroup.value = true;
+        var rowOpt1 = pnlCreationOptions.add("group");
+        rowOpt1.orientation = "row";
+        rowOpt1.spacing = 15;
+        var chkCompound = rowOpt1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
+        chkCompound.value = true;
+        var chkPitchSameLayer = rowOpt1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
+        chkPitchSameLayer.value = false;
+        var chkCenterSameGroup = rowOpt1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
+        chkCenterSameGroup.value = true;
+        var chkIndividualTeeth = rowOpt1.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
+        chkIndividualTeeth.value = false;
 
-        var rowOptDef2 = pnlStdOptions.add("group");
-        rowOptDef2.orientation = "row";
-        rowOptDef2.spacing = 15;
-        var chkDefDrawLabel = rowOptDef2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
-        chkDefDrawLabel.value = true;
-        var chkDefIndividualTeeth = rowOptDef2.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
-        chkDefIndividualTeeth.value = false;
-        var rbDefSkelSingle = rowOptDef2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
-        rbDefSkelSingle.value = true;
-        var rbDefSkelPerStage = rowOptDef2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        var rowOpt2 = pnlCreationOptions.add("group");
+        rowOpt2.orientation = "row";
+        rowOpt2.spacing = 15;
+        var chkText = rowOpt2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
+        chkText.value = true;
+        var rbSkelSingleLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        rbSkelSingleLayer.value = true;
+        var rbSkelPerStageLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+
+        var chkRecordLogThis = rowOpt2.add("checkbox", undefined, "\u8a08\u7b97\u904e\u7a0b\u3092TXT\u30ed\u30b0\u4fdd\u5b58");
+        chkRecordLogThis.value = false;
+
+        // Alias variables for backward compatibility
+        var chkDefCompound = chkCompound;
+        var chkDefPitchSameLayer = chkPitchSameLayer;
+        var chkDefCenterSameGroup = chkCenterSameGroup;
+        var chkDefDrawLabel = chkText;
+        var chkDefIndividualTeeth = chkIndividualTeeth;
+        var rbDefSkelSingle = rbSkelSingleLayer;
+        var rbDefSkelPerStage = rbSkelPerStageLayer;
 
         // 4. Layers & Naming Conventions Panel
-        var pnlNaming = tabSettings.add("panel", undefined, "\u30ec\u30a4\u30e4\u30fc\u30fb\u547d\u540d\u898f\u5247 (Layers & Naming)");
+        var pnlNaming = paneRight.add("panel", undefined, "\u30ec\u30a4\u30e4\u30fc\u30fb\u547d\u540d\u898f\u5247 (Layers & Naming)");
         pnlNaming.orientation = "column";
         pnlNaming.alignChildren = ["fill", "top"];
         pnlNaming.spacing = 6;
@@ -7489,7 +7514,7 @@ var DialogView = (function () {
         etTemplateGear.onChanging = onCustomNaming;
 
         // 5. Diagnostics & Log Preferences Panel
-        var pnlToleranceLog = tabSettings.add("panel", undefined, "\u89e3\u6790\u30c8\u30ec\u30e9\u30f3\u30b9\u30fb\u8a3a\u65ad\u30ed\u30b0 (Tolerance & Diagnostics)");
+        var pnlToleranceLog = paneRight.add("panel", undefined, "\u89e3\u6790\u30c8\u30ec\u30e9\u30f3\u30b9\u30fb\u8a3a\u65ad\u30ed\u30b0 (Tolerance & Diagnostics)");
         pnlToleranceLog.orientation = "column";
         pnlToleranceLog.alignChildren = ["fill", "top"];
         pnlToleranceLog.spacing = 6;
@@ -7557,7 +7582,7 @@ var DialogView = (function () {
         };
 
         // 6. Settings Profile I/O Panel (JSON Import / Export & Reset)
-        var pnlProfileIO = tabSettings.add("panel", undefined, "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u5165\u51fa\u529b (Profile Import / Export)");
+        var pnlProfileIO = paneRight.add("panel", undefined, "\u8a2d\u5b9a\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb\u5165\u51fa\u529b (Profile Import / Export)");
         pnlProfileIO.orientation = "row";
         pnlProfileIO.alignChildren = ["left", "center"];
         pnlProfileIO.spacing = 10;
@@ -7720,7 +7745,7 @@ var DialogView = (function () {
         // ==========================================
 
 // 2. Circle Object Topology Panel (Placed SECOND as requested)
-        var pnlCircle = tabCreate.add("panel", undefined, "\u5186\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u9023\u643a (Object-Driven Input)");
+        var pnlCircle = paneLeft.add("panel", undefined, "\u5186\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u9023\u643a (Object-Driven Input)");
         pnlCircle.orientation = "column";
         pnlCircle.alignChildren = ["fill", "top"];
         pnlCircle.spacing = 4;
@@ -7781,7 +7806,7 @@ var DialogView = (function () {
         btnAutoBuildTrain.enabled = (selectedCircles.length > 1);
 
         // 3. Mechanism Configuration Panel
-        var pnlConfig = tabCreate.add("panel", undefined, "輪列構成・諸元 (Gear Train Configuration)");
+        var pnlConfig = paneLeft.add("panel", undefined, "輪列構成・諸元 (Gear Train Configuration)");
         pnlConfig.orientation = "column";
         pnlConfig.alignChildren = ["fill", "top"];
         pnlConfig.spacing = 8;
@@ -8006,40 +8031,10 @@ var DialogView = (function () {
         var btnDeleteNode = rowNodeBtns2.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
         var btnImportCSV = rowNodeBtns2.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
 
-// 4. Gear Creation Options Panel (6 Specific User Options)
-        var pnlCreationOptions = tabCreate.add("panel", undefined, "\u6b6f\u8eca\u4f5c\u6210\u30aa\u30d7\u30b7\u30e7\u30f3 (Creation Options)");
-        pnlCreationOptions.orientation = "column";
-        pnlCreationOptions.alignChildren = ["fill", "top"];
-        pnlCreationOptions.spacing = 4;
-        pnlCreationOptions.margins = 6;
-
-        var rowOpt1 = pnlCreationOptions.add("group");
-        rowOpt1.orientation = "row";
-        rowOpt1.spacing = 15;
-        var chkCompound = rowOpt1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
-        chkCompound.value = chkDefCompound.value;
-        var chkPitchSameLayer = rowOpt1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
-        chkPitchSameLayer.value = chkDefPitchSameLayer.value;
-        var chkCenterSameGroup = rowOpt1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
-        chkCenterSameGroup.value = chkDefCenterSameGroup.value;
-        var chkIndividualTeeth = rowOpt1.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
-        chkIndividualTeeth.value = chkDefIndividualTeeth.value;
-
-        var rowOpt2 = pnlCreationOptions.add("group");
-        rowOpt2.orientation = "row";
-        rowOpt2.spacing = 15;
-        var chkText = rowOpt2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
-        chkText.value = chkDefDrawLabel.value;
-        var rbSkelSingleLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
-        rbSkelSingleLayer.value = rbDefSkelSingle.value;
-        var rbSkelPerStageLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
-        rbSkelPerStageLayer.value = rbDefSkelPerStage.value;
-
-        var chkRecordLogThis = rowOpt2.add("checkbox", undefined, "\u8a08\u7b97\u904e\u7a0b\u3092TXT\u30ed\u30b0\u4fdd\u5b58");
-        chkRecordLogThis.value = chkAutoRecordLog.value;
+// (pnlCreationOptions moved to paneRight)
 
         // 5. Placement & Origin Panel (Renamed G1 to Root Gear Center)
-        var pnlPlacement = tabCreate.add("panel", undefined, "\u4f5c\u6210\u4f4d\u7f6e (Placement & Origin)");
+        var pnlPlacement = paneLeft.add("panel", undefined, "\u4f5c\u6210\u4f4d\u7f6e (Placement & Origin)");
         pnlPlacement.orientation = "row";
         pnlPlacement.alignChildren = ["left", "center"];
         pnlPlacement.spacing = 8;
@@ -8224,7 +8219,7 @@ var DialogView = (function () {
         }
 
         // 6. Calculation Results Panel
-        var pnlCalc = tabCreate.add("panel", undefined, "\u8a08\u7b97\u7d50\u679c\u30fb\u5e72\u6e09\u30d7\u30ec\u30d3\u30e5\u30fc");
+        var pnlCalc = paneLeft.add("panel", undefined, "\u8a08\u7b97\u7d50\u679c\u30fb\u5e72\u6e09\u30d7\u30ec\u30d3\u30e5\u30fc");
         pnlCalc.orientation = "row";
         pnlCalc.alignChildren = ["fill", "center"];
         pnlCalc.spacing = 15;
@@ -8233,7 +8228,7 @@ var DialogView = (function () {
         var lblCalcSummary = pnlCalc.add("statictext", undefined, "\u6b6f\u8eca\u8af8\u5143\u3092\u8a08\u7b97\u4e2d...");
         lblCalcSummary.characters = 65;
 
-        tabMain.selection = tabCreate;
+        // 2-Pane layout active
 
         // ==========================================
         // Train Nodes State Management (Protected & Synchronized)
@@ -10306,12 +10301,12 @@ if (isNaN(m) || m <= 0) {
 
 /**
  * MainController.jsxinc - Main Execution Dispatcher for Adobe Illustrator
- * Version: 0.9.14
+ * Version: 0.9.36
  * Part of GearDrawer Architecture
  */
 
 var MainController = (function () {
-    var _version = "0.9.14";
+    var _version = "0.9.36";
 
     function run(version) {
         if (version) _version = version;
@@ -10608,4 +10603,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.35');
+MainController.run('0.9.36');
