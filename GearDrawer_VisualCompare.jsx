@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare - Visual Overlay & Verification for Adobe Illustrator
- * Version: 0.9.36
+ * Version: 0.9.37
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 

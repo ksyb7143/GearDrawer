@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Rack - Visual Verification for Rack & Pinion
- * Version: 0.9.36
+ * Version: 0.9.37
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */

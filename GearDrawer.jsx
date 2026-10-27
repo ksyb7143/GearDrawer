@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.36
+ * Version: 0.9.37
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -7306,7 +7306,7 @@ var DialogView = (function () {
         win.alignChildren = ["fill", "top"];
         win.spacing = 8;
         win.margins = 10;
-        win.preferredSize.width = 1120;
+        win.preferredSize.width = 800;
         win.preferredSize.height = 780;
 
         var grpPanes = win.add("group");
@@ -7319,14 +7319,14 @@ var DialogView = (function () {
         var paneLeft = grpPanes.add("group");
         paneLeft.orientation = "column";
         paneLeft.alignChildren = ["fill", "top"];
-        paneLeft.preferredSize.width = 630;
+        paneLeft.preferredSize.width = 450;
         paneLeft.spacing = 6;
 
         // Right Pane: CAD/CAM Styles, Geometry Options, Creation Options & Defaults
         var paneRight = grpPanes.add("group");
         paneRight.orientation = "column";
         paneRight.alignChildren = ["fill", "top"];
-        paneRight.preferredSize.width = 460;
+        paneRight.preferredSize.width = 330;
         paneRight.spacing = 6;
 
         // ==========================================
@@ -7341,32 +7341,43 @@ var DialogView = (function () {
         pnlCommon.spacing = 6;
         pnlCommon.margins = 6;
 
+        // Row 1: Module & Alpha
         var rowDef1 = pnlCommon.add("group");
         rowDef1.orientation = "row";
-        rowDef1.spacing = 10;
+        rowDef1.spacing = 8;
         rowDef1.add("statictext", undefined, "\u30e2\u30b8\u30e5\u30fc\u30eb:");
         var etModule = rowDef1.add("edittext", undefined, "2.0"); etModule.characters = 4;
-        rowDef1.add("statictext", undefined, "\u5727\u529b\u89d2 (deg):");
+        rowDef1.add("statictext", undefined, " \u5727\u529b\u89d2(deg):");
         var etAlpha = rowDef1.add("edittext", undefined, "20"); etAlpha.characters = 4;
-        rowDef1.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7 (mm):");
-        var etBacklash = rowDef1.add("edittext", undefined, "0.15"); etBacklash.characters = 4;
-        rowDef1.add("statictext", undefined, "\u6b6f\u5148\u4e38\u307f (mm):");
-        var etDefTipRounding = rowDef1.add("edittext", undefined, "0.0"); etDefTipRounding.characters = 4;
 
+        // Row 2: Backlash & Tip Rounding
         var rowDef2 = pnlCommon.add("group");
         rowDef2.orientation = "row";
-        rowDef2.spacing = 10;
-        rowDef2.add("statictext", undefined, "\u30ab\u30fc\u30d5\u88dc\u6b63 (mm):");
-        var etKerf = rowDef2.add("edittext", undefined, "0.0"); etKerf.characters = 4;
-        rowDef2.add("statictext", undefined, "\u6a19\u6e96\u8ef8\u7a74\u5f84 (mm):");
-        var etDefShaft = rowDef2.add("edittext", undefined, "5.0"); etDefShaft.characters = 4;
-        rowDef2.add("statictext", undefined, "\u8ef8\u7a74\u5f62\u72b6:");
-        var ddDefShaftType = rowDef2.add("dropdownlist", undefined, ["\u4e38\u7a74 (Round)", "D\u30ab\u30c3\u30c8 (D-Cut)", "\u30ad\u30fc\u6e4d (Keyway)", "\u306a\u3057 (None)"]);
-        ddDefShaftType.selection = 0;
+        rowDef2.spacing = 8;
+        rowDef2.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7(mm):");
+        var etBacklash = rowDef2.add("edittext", undefined, "0.15"); etBacklash.characters = 4;
+        rowDef2.add("statictext", undefined, " \u6b6f\u5148\u4e38\u307f(mm):");
+        var etDefTipRounding = rowDef2.add("edittext", undefined, "0.0"); etDefTipRounding.characters = 4;
 
-        rowDef2.add("statictext", undefined, " \u539a\u307f\u57fa\u6e96:");
-        var rbDefThickRoot = rowDef2.add("radiobutton", undefined, "\u6b6f\u5e95\u304b\u3089");
-        var rbDefThickTip = rowDef2.add("radiobutton", undefined, "\u6b6f\u5148\u304b\u3089");
+        // Row 3: Kerf & Shaft Diameter
+        var rowDef3 = pnlCommon.add("group");
+        rowDef3.orientation = "row";
+        rowDef3.spacing = 8;
+        rowDef3.add("statictext", undefined, "\u30ab\u30fc\u30d5\u88dc\u6b63(mm):");
+        var etKerf = rowDef3.add("edittext", undefined, "0.0"); etKerf.characters = 4;
+        rowDef3.add("statictext", undefined, " \u6a19\u6e96\u8ef8\u5f84(mm):");
+        var etDefShaft = rowDef3.add("edittext", undefined, "5.0"); etDefShaft.characters = 4;
+
+        // Row 4: Shaft Shape & Thickness Mode
+        var rowDef4 = pnlCommon.add("group");
+        rowDef4.orientation = "row";
+        rowDef4.spacing = 8;
+        rowDef4.add("statictext", undefined, "\u8ef8\u7a74\u5f62\u72b6:");
+        var ddDefShaftType = rowDef4.add("dropdownlist", undefined, ["\u4e38\u7a74 (Round)", "D\u30ab\u30c3\u30c8 (D-Cut)", "\u30ad\u30fc\u6e4d (Keyway)", "\u306a\u3057 (None)"]);
+        ddDefShaftType.selection = 0;
+        rowDef4.add("statictext", undefined, " \u539a\u307f:");
+        var rbDefThickRoot = rowDef4.add("radiobutton", undefined, "\u6b6f\u5e95");
+        var rbDefThickTip = rowDef4.add("radiobutton", undefined, "\u6b6f\u5148");
         rbDefThickRoot.value = true;
 
         // 2. CAD / CAM Styles & Precision Panel
@@ -7378,25 +7389,27 @@ var DialogView = (function () {
 
         var rowQ1 = pnlQuality.add("group");
         rowQ1.orientation = "row";
-        rowQ1.spacing = 10;
-        rowQ1.add("statictext", undefined, "\u66f2\u7dda\u7cbe\u5ea6:");
-        var ddQuality = rowQ1.add("dropdownlist", undefined, [
-            "\u9ad8\u7cbe\u5ea6\u30d9\u30b8\u30a7 [\u63a8\u5968] (8-10\u70b9/\u6b6f)",
-            "\u6700\u5c0f\u30d9\u30b8\u30a7 [\u69cb\u6210B] (6\u70b9/\u6b6f)",
-            "\u9ad8\u5bc6\u5ea6\u30dd\u30ea\u30e9\u30a4\u30f3 [\u5f93\u6765] (~25\u70b9/\u6b6f)"
-        ]);
-        ddQuality.selection = 0;
-
-        rowQ1.add("statictext", undefined, " \u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8:");
+        rowQ1.spacing = 8;
+        rowQ1.add("statictext", undefined, "\u30b9\u30bf\u30a4\u30eb:");
         var ddStylePreset = rowQ1.add("dropdownlist", undefined, [
-            "\u30ec\u30fc\u30b6\u30fc\u52a0\u5de5\u6a19\u6e96 (Laser Hairline Red)",
-            "JIS \u6a5f\u68b0\u88fd\u56f3\u6a19\u6e96 (0.5mm \u592a\u7dda/\u7d30\u7dda)",
-            "CNC\u5207\u524a / 3D\u30d7\u30ea\u30f3\u30c8\u6a19\u6e96",
+            "\u30ec\u30fc\u30b6\u30fc\u52a0\u5de5\u6a19\u6e96 (Laser)",
+            "JIS \u6a5f\u68b0\u88fd\u56f3\u6a19\u6e96 (JIS)",
+            "CNC\u5207\u524a / 3D\u30d7\u30ea\u30f3\u30c8 (CNC)",
             "\u30ab\u30b9\u30bf\u30e0 (Custom)"
         ]);
         ddStylePreset.selection = 0;
+        var btnDetailStyle = rowQ1.add("button", undefined, "\u8a73\u7d30\u8a2d\u5b9a...");
 
-        var btnDetailStyle = rowQ1.add("button", undefined, "\u8a73\u7d30\u30b9\u30bf\u30a4\u30eb\u8a2d\u5b9a (\u8272\u30fb\u7dda\u5e45\u30fb\u7834\u7dda)...");
+        var rowQ2 = pnlQuality.add("group");
+        rowQ2.orientation = "row";
+        rowQ2.spacing = 8;
+        rowQ2.add("statictext", undefined, "\u66f2\u7dda\u7cbe\u5ea6:");
+        var ddQuality = rowQ2.add("dropdownlist", undefined, [
+            "\u9ad8\u7cbe\u5ea6\u30d9\u30b8\u30a7 [\u63a8\u5968] (8-10\u70b9/\u6b6f)",
+            "\u6700\u5c0f\u30d9\u30b8\u30a7 [\u69cb\u6210B] (6\u70b9/\u6b6f)",
+            "\u9ad8\u5bc6\u5ea6\u30dd\u30ea\u30e9\u30a4\u30f3 (~25\u70b9/\u6b6f)"
+        ]);
+        ddQuality.selection = 0;
         btnDetailStyle.onClick = function () {
             showStyleDetailModal(win, currentStyles, function (updated) {
                 currentStyles = updated;
@@ -7418,28 +7431,34 @@ var DialogView = (function () {
         pnlCreationOptions.spacing = 4;
         pnlCreationOptions.margins = 6;
 
-        var rowOpt1 = pnlCreationOptions.add("group");
-        rowOpt1.orientation = "row";
-        rowOpt1.spacing = 15;
-        var chkCompound = rowOpt1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u8907\u5408\u30d1\u30b9\u3068\u3057\u3066\u4e00\u4f53\u5316");
+        var grpOptCols = pnlCreationOptions.add("group");
+        grpOptCols.orientation = "row";
+        grpOptCols.spacing = 8;
+        grpOptCols.alignChildren = ["fill", "top"];
+
+        var colOpt1 = grpOptCols.add("group");
+        colOpt1.orientation = "column";
+        colOpt1.alignChildren = ["left", "top"];
+        colOpt1.spacing = 4;
+        var chkCompound = colOpt1.add("checkbox", undefined, "\u8ef8\u7a74\u3068\u6b6f\u3092\u4e00\u4f53\u5316");
         chkCompound.value = true;
-        var chkPitchSameLayer = rowOpt1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30ec\u30a4\u30e4\u306b\u63cf\u753b");
+        var chkPitchSameLayer = colOpt1.add("checkbox", undefined, "\u30d4\u30c3\u30c1\u5186\u540c\u30ec\u30a4\u30e4");
         chkPitchSameLayer.value = false;
-        var chkCenterSameGroup = rowOpt1.add("checkbox", undefined, "\u4e2d\u5fc3\u30ac\u30a4\u30c9\u3092\u6b6f\u8eca\u3068\u540c\u3058\u30b0\u30eb\u30fc\u30d7\u306b\u63cf\u753b");
+        var chkCenterSameGroup = colOpt1.add("checkbox", undefined, "\u4e2d\u5fc3\u540c\u30b0\u30eb\u30fc\u30d7");
         chkCenterSameGroup.value = true;
-        var chkIndividualTeeth = rowOpt1.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u3068\u3057\u3066\u51fa\u529b (\u6b20\u6b6f\u30fb\u9593\u6b20\u52a0\u5de5\u7528)");
+        var chkIndividualTeeth = colOpt1.add("checkbox", undefined, "\u6b6f\u3092\u500b\u5225\u30d1\u30b9\u51fa\u529b");
         chkIndividualTeeth.value = false;
 
-        var rowOpt2 = pnlCreationOptions.add("group");
-        rowOpt2.orientation = "row";
-        rowOpt2.spacing = 15;
-        var chkText = rowOpt2.add("checkbox", undefined, "\u6b6f\u8eca\u306e\u4ed5\u69d8\u30e9\u30d9\u30eb\u3092\u63cf\u753b");
+        var colOpt2 = grpOptCols.add("group");
+        colOpt2.orientation = "column";
+        colOpt2.alignChildren = ["left", "top"];
+        colOpt2.spacing = 4;
+        var chkText = colOpt2.add("checkbox", undefined, "\u4ed5\u69d8\u30e9\u30d9\u30eb\u63cf\u753b");
         chkText.value = true;
-        var rbSkelSingleLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u30921\u3064\u306e\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
+        var rbSkelSingleLayer = colOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c: 1\u30ec\u30a4\u30e4");
         rbSkelSingleLayer.value = true;
-        var rbSkelPerStageLayer = rowOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c\u56f3\u3092\u8f2a\u5217\u306e\u6bb5\u3054\u3068\u306b\u5225\u30ec\u30a4\u30e4\u3067\u4f5c\u6210");
-
-        var chkRecordLogThis = rowOpt2.add("checkbox", undefined, "\u8a08\u7b97\u904e\u7a0b\u3092TXT\u30ed\u30b0\u4fdd\u5b58");
+        var rbSkelPerStageLayer = colOpt2.add("radiobutton", undefined, "JIS\u9aa8\u683c: \u6bb5\u5225");
+        var chkRecordLogThis = colOpt2.add("checkbox", undefined, "\u8a08\u7b97\u30ed\u30b0TXT\u4fdd\u5b58");
         chkRecordLogThis.value = false;
 
         // Alias variables for backward compatibility
@@ -7472,15 +7491,19 @@ var DialogView = (function () {
 
         var rowN2 = pnlNaming.add("group");
         rowN2.orientation = "row";
-        rowN2.spacing = 8;
+        rowN2.spacing = 6;
         rowN2.add("statictext", undefined, "\u8f2a\u5217:");
-        var etTemplateMain = rowN2.add("edittext", undefined, "{train}"); etTemplateMain.characters = 8;
-        rowN2.add("statictext", undefined, "\u6bb5:");
-        var etTemplateSub = rowN2.add("edittext", undefined, "{train}_{layer}"); etTemplateSub.characters = 12;
-        rowN2.add("statictext", undefined, "\u56f3\u9762:");
-        var etTemplateDwg = rowN2.add("edittext", undefined, "{train}_dwg"); etTemplateDwg.characters = 10;
-        rowN2.add("statictext", undefined, "\u30ae\u30a2:");
-        var etTemplateGear = rowN2.add("edittext", undefined, "{id}_{kind}_z{z}"); etTemplateGear.characters = 12;
+        var etTemplateMain = rowN2.add("edittext", undefined, "{train}"); etTemplateMain.characters = 7;
+        rowN2.add("statictext", undefined, " \u6bb5:");
+        var etTemplateSub = rowN2.add("edittext", undefined, "{train}_{layer}"); etTemplateSub.characters = 10;
+
+        var rowN3 = pnlNaming.add("group");
+        rowN3.orientation = "row";
+        rowN3.spacing = 6;
+        rowN3.add("statictext", undefined, "\u56f3\u9762:");
+        var etTemplateDwg = rowN3.add("edittext", undefined, "{train}_dwg"); etTemplateDwg.characters = 9;
+        rowN3.add("statictext", undefined, " \u30ae\u30a2:");
+        var etTemplateGear = rowN3.add("edittext", undefined, "{id}_{kind}_z{z}"); etTemplateGear.characters = 12;
 
         function applyNamingPreset(idx) {
             if (idx === 0) {
@@ -7522,25 +7545,28 @@ var DialogView = (function () {
 
         var rowTol1 = pnlToleranceLog.add("group");
         rowTol1.orientation = "row";
-        rowTol1.spacing = 10;
-        rowTol1.add("statictext", undefined, "\u565b\u5408\u8a31\u5bb9\u8aa4\u5dee (mm):");
+        rowTol1.spacing = 8;
+        rowTol1.add("statictext", undefined, "\u565b\u5408\u8a31\u5bb9\u8aa4\u5dee(mm):");
         var etTolerance = rowTol1.add("edittext", undefined, "2.5"); etTolerance.characters = 4;
-        rowTol1.add("statictext", undefined, "\u8ef8\u9593\u6c7a\u5b9a\u30e2\u30fc\u30c9:");
-        var ddSnapMode = rowTol1.add("dropdownlist", undefined, [
+        var chkCrossLayerMesh = rowTol1.add("checkbox", undefined, "\u7570\u30ec\u30a4\u30e4\u30fc\u565b\u5408\u8a31\u5bb9");
+        chkCrossLayerMesh.value = false;
+
+        var rowTol2 = pnlToleranceLog.add("group");
+        rowTol2.orientation = "row";
+        rowTol2.spacing = 8;
+        rowTol2.add("statictext", undefined, "\u8ef8\u9593\u6c7a\u5b9a:");
+        var ddSnapMode = rowTol2.add("dropdownlist", undefined, [
             "\u5b9f\u5bf8\u4f4d\u7f6e\u56fa\u5b9a & \u8ee2\u4f4dx\u81ea\u52d5\u9006\u7b97 [\u63a8\u5968]",
             "\u6a5f\u69cb\u7406\u8ad6\u8ddd\u96e2\u306b\u30b9\u30ca\u30c3\u30d7",
             "\u5186\u306e\u4f4d\u7f6e\u306b\u72ec\u7acb\u914d\u7f6e (Free)"
         ]);
         ddSnapMode.selection = 0;
-        var chkCrossLayerMesh = rowTol1.add("checkbox", undefined, "\u7570\u30ec\u30a4\u30e4\u30fc\u9593\u565b\u5408\u3092\u8a31\u5bb9");
-        chkCrossLayerMesh.value = false;
 
         var rowLog1 = pnlToleranceLog.add("group");
         rowLog1.orientation = "row";
-        rowLog1.spacing = 8;
-        var chkAutoRecordLog = rowLog1.add("checkbox", undefined, "\u8f2a\u5217\u4f5c\u6210\u6642\u306b\u81ea\u52d5\u3067\u8a08\u7b97\u30ed\u30b0\u4fdd\u5b58\u3092\u6709\u52b9\u5316");
+        rowLog1.spacing = 6;
+        var chkAutoRecordLog = rowLog1.add("checkbox", undefined, "\u81ea\u52d5\u3067TXT\u30ed\u30b0\u4fdd\u5b58\u3092\u6709\u52b9\u5316");
         chkAutoRecordLog.value = false;
-        rowLog1.add("statictext", undefined, "\u4fdd\u5b58\u5148:");
 
         var defaultLogDir = "";
         try {
@@ -7555,10 +7581,15 @@ var DialogView = (function () {
                 }
             } catch (eDesk) {}
         }
-        var etLogFolder = rowLog1.add("edittext", undefined, defaultLogDir);
-        etLogFolder.preferredSize = [130, 20];
 
-        var btnBrowseFolder = rowLog1.add("button", undefined, "\u53c2\u7167 (Explorer)...");
+        var rowLog2 = pnlToleranceLog.add("group");
+        rowLog2.orientation = "row";
+        rowLog2.spacing = 6;
+        rowLog2.add("statictext", undefined, "\u4fdd\u5b58\u5148:");
+        var etLogFolder = rowLog2.add("edittext", undefined, defaultLogDir);
+        etLogFolder.preferredSize = [120, 20];
+
+        var btnBrowseFolder = rowLog2.add("button", undefined, "\u53c2\u7167...");
         btnBrowseFolder.onClick = function () {
             try {
                 var selFile = File.openDialog(
@@ -7572,7 +7603,7 @@ var DialogView = (function () {
             } catch (eSel) {}
         };
 
-        var btnOpenFolder = rowLog1.add("button", undefined, "\u30d5\u30a9\u30eb\u30c0\u3092\u958b\u304f");
+        var btnOpenFolder = rowLog2.add("button", undefined, "\u958b\u304f");
         btnOpenFolder.onClick = function () {
             try {
                 var f = new Folder(etLogFolder.text || "~");
@@ -7588,9 +7619,9 @@ var DialogView = (function () {
         pnlProfileIO.spacing = 10;
         pnlProfileIO.margins = 8;
 
-        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u66f8\u304d\u51fa\u3057 (Save JSON)...");
-        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u8aad\u307f\u8fbc\u307f (Load JSON)...");
-        var btnResetFactory = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u3092\u521d\u671f\u5316");
+        var btnExportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u4fdd\u5b58...");
+        var btnImportSettings = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u8aad\u8fbc...");
+        var btnResetFactory = pnlProfileIO.add("button", undefined, "\u8a2d\u5b9a\u521d\u671f\u5316");
 
         function getCurrentPreferencesObject() {
             return {
@@ -7751,57 +7782,58 @@ var DialogView = (function () {
         pnlCircle.spacing = 4;
         pnlCircle.margins = 6;
 
-        var rowCircleTop = pnlCircle.add("group");
-        rowCircleTop.orientation = "row";
-        rowCircleTop.alignChildren = ["left", "center"];
-        rowCircleTop.spacing = 10;
-
-        var chkUseCircle = rowCircleTop.add("checkbox", undefined, "\u5186\u304b\u3089\u6b6f\u8eca\u3092\u4f5c\u6210");
+        // Row 1: Checkbox, Rescan & Status
+        var rowCircle1 = pnlCircle.add("group");
+        rowCircle1.orientation = "row";
+        rowCircle1.alignChildren = ["left", "center"];
+        rowCircle1.spacing = 8;
+        var chkUseCircle = rowCircle1.add("checkbox", undefined, "\u5186\u304b\u3089\u6b6f\u8eca\u4f5c\u6210");
         chkUseCircle.value = (selectedCircles.length > 0);
         chkUseCircle.enabled = (selectedCircles.length > 0);
+        var btnRescan = rowCircle1.add("button", undefined, "\u5186\u3092\u518d\u30b9\u30ad\u30e3\u30f3");
+        var lblCircleStatus = rowCircle1.add("statictext", undefined, "");
+        lblCircleStatus.characters = 18;
 
-        rowCircleTop.add("statictext", undefined, "  \u691c\u51fa\u5143:");
-        var rbSourceSelection = rowCircleTop.add("radiobutton", undefined, "\u9078\u629e\u30aa\u30d6\u30b8\u30a8\u30af\u30c8");
-        var rbSourceAllLayers = rowCircleTop.add("radiobutton", undefined, "\u5168\u30ec\u30a4\u30e4\u30fc");
+        // Row 2: Source & Interpretation
+        var rowCircle2 = pnlCircle.add("group");
+        rowCircle2.orientation = "row";
+        rowCircle2.alignChildren = ["left", "center"];
+        rowCircle2.spacing = 8;
+        rowCircle2.enabled = (selectedCircles.length > 0);
+        rowCircle2.add("statictext", undefined, "\u691c\u51fa\u5143:");
+        var rbSourceSelection = rowCircle2.add("radiobutton", undefined, "\u9078\u629e");
+        var rbSourceAllLayers = rowCircle2.add("radiobutton", undefined, "\u5168\u5c64");
         rbSourceSelection.value = true;
-
-        var btnRescan = rowCircleTop.add("button", undefined, "\u5186\u3092\u518d\u30b9\u30ad\u30e3\u30f3");
-
-        var lblCircleStatus = rowCircleTop.add("statictext", undefined, "");
-        lblCircleStatus.characters = 28;
-
-        var rowCircleOptions = pnlCircle.add("group");
-        rowCircleOptions.orientation = "row";
-        rowCircleOptions.alignChildren = ["left", "center"];
-        rowCircleOptions.spacing = 15;
-        rowCircleOptions.enabled = (selectedCircles.length > 0);
-
-        rowCircleOptions.add("statictext", undefined, "\u76f4\u5f84\u306e\u89e3\u91c8:");
-        var rbCirclePitch = rowCircleOptions.add("radiobutton", undefined, "\u30d4\u30c3\u30c1\u5186 (\u565b\u5408\u57fa\u6e96)");
+        rowCircle2.add("statictext", undefined, " \u76f4\u5f84:");
+        var rbCirclePitch = rowCircle2.add("radiobutton", undefined, "\u30d4\u30c3\u30c1\u5186");
+        var rbCircleTip = rowCircle2.add("radiobutton", undefined, "\u6b6f\u5148\u5186");
         rbCirclePitch.value = true;
-        var rbCircleTip = rowCircleOptions.add("radiobutton", undefined, "\u6b6f\u5148\u5186 (\u5916\u5f84\u5236\u7d04)");
 
-        rowCircleOptions.add("statictext", undefined, "  \u5143\u306e\u5186\u306e\u51e6\u7406:");
-        var ddCircleFate = rowCircleOptions.add("dropdownlist", undefined, [
-            "\u30ac\u30a4\u30c9\u7dda\u306b\u5909\u63db (Guide)",
-            "\u524a\u9664\u3057\u3066\u7f6e\u63db (Delete)",
-            "\u305d\u306e\u307e\u307e\u4fdd\u6301 (Keep)"
+        // Row 3: Fate & Positioning
+        var rowCircle3 = pnlCircle.add("group");
+        rowCircle3.orientation = "row";
+        rowCircle3.alignChildren = ["left", "center"];
+        rowCircle3.spacing = 8;
+        rowCircle3.enabled = (selectedCircles.length > 0);
+        rowCircle3.add("statictext", undefined, "\u5143\u5186\u51e6\u7406:");
+        var ddCircleFate = rowCircle3.add("dropdownlist", undefined, [
+            "\u30ac\u30a4\u30c9\u7dda\u5316",
+            "\u524a\u9664\u7f6e\u63db",
+            "\u4fdd\u6301"
         ]);
         ddCircleFate.selection = 0;
-
-        var grpMultiCircle = pnlCircle.add("group");
-        grpMultiCircle.orientation = "row";
-        grpMultiCircle.alignChildren = ["left", "center"];
-        grpMultiCircle.spacing = 10;
-        grpMultiCircle.enabled = (selectedCircles.length > 1);
-
-        grpMultiCircle.add("statictext", undefined, "\u914d\u7f6e\u4f4d\u7f6e:");
-        var rbCircleOrigPos = grpMultiCircle.add("radiobutton", undefined, "\u5143\u306e\u5186\u306b\u6e96\u62e0\u3057\u3066\u69cb\u7bc9");
-        var rbCircleCustomPos = grpMultiCircle.add("radiobutton", undefined, "\u65b0\u305f\u306b\u4f4d\u7f6e\u3092\u6307\u5b9a");
-        // FIXED: Default to custom pos so placement coordinates are NOT disabled by default!
+        rowCircle3.add("statictext", undefined, " \u914d\u7f6e:");
+        var rbCircleOrigPos = rowCircle3.add("radiobutton", undefined, "\u5143\u4f4d\u7f6e");
+        var rbCircleCustomPos = rowCircle3.add("radiobutton", undefined, "\u6307\u5b9a\u4f4d\u7f6e");
         rbCircleOrigPos.value = false;
         rbCircleCustomPos.value = true;
 
+        // Row 4: Multi-Circle Build Button
+        var grpMultiCircle = pnlCircle.add("group");
+        grpMultiCircle.orientation = "row";
+        grpMultiCircle.alignChildren = ["left", "center"];
+        grpMultiCircle.spacing = 8;
+        grpMultiCircle.enabled = (selectedCircles.length > 1);
         var btnAutoBuildTrain = grpMultiCircle.add("button", undefined, "\u5186\u304b\u3089\u8f2a\u5217\u30c4\u30ea\u30fc\u3092\u81ea\u52d5\u69cb\u7bc9");
         btnAutoBuildTrain.enabled = (selectedCircles.length > 1);
 
@@ -7845,18 +7877,18 @@ var DialogView = (function () {
                 "\u6bb5",
                 "\u89aa",
                 "\u63a5\u7d9a",
-                "\u6b6f\u6570/\u8af8\u5143",
-                "\u6e1b\u901f\u6bd4 i",
-                "\u5916\u5f84/\u30ea\u30e0\u539a",
+                "\u6b6f\u6570",
+                "\u6e1b\u901f\u6bd4",
+                "\u5916\u5f84/\u30ea\u30e0",
                 "m",
                 "\u03b1",
-                "\u8ef8\u7a74/\u5f62\u72b6",
-                "\u63a5\u7d9a\u89d2\u5ea6",
-                "\u565b\u5408\u72b6\u614b"
+                "\u8ef8\u7a74",
+                "\u89d2\u5ea6",
+                "\u72b6\u614b"
             ],
-            columnWidths: [45, 45, 30, 45, 45, 70, 60, 95, 35, 30, 85, 75, 80]
+            columnWidths: [35, 38, 24, 35, 35, 52, 45, 70, 28, 24, 55, 45, 45]
         });
-        trainListBox.preferredSize = [680, 210];
+        trainListBox.preferredSize = [430, 180];
 
         // Node Detail Editor Area (Parent first, then teeth)
         var pnlNodeDetail = pnlTrain.add("panel", undefined, "\u9078\u629e\u30ae\u30a2\u306e\u500b\u5225\u8a2d\u5b9a (Selected Gear Settings)");
@@ -7866,88 +7898,80 @@ var DialogView = (function () {
         pnlNodeDetail.margins = 6;
 
         // Row 1: ID Editor with Enter protection and validation
+        // Row 1: ID & Kind
         var rowNode1 = pnlNodeDetail.add("group");
         rowNode1.orientation = "row";
         rowNode1.alignChildren = ["left", "center"];
-        rowNode1.spacing = 8;
+        rowNode1.spacing = 6;
         rowNode1.add("statictext", undefined, "\u30ae\u30a2ID:");
-        var etNodeId = rowNode1.add("edittext", undefined, "G1");
-        etNodeId.characters = 6;
+        var etNodeId = rowNode1.add("edittext", undefined, "G1"); etNodeId.characters = 5;
         var btnChangeId = rowNode1.add("button", undefined, "ID\u5909\u66f4");
-        var lblIdStatus = rowNode1.add("statictext", undefined, "");
-        lblIdStatus.characters = 25;
+        var lblIdStatus = rowNode1.add("statictext", undefined, ""); lblIdStatus.characters = 6;
+        rowNode1.add("statictext", undefined, " \u7a2e\u5225:");
+        var ddNodeKind = rowNode1.add("dropdownlist", undefined, ["\u5916\u6b6f\u8eca (Spur)", "\u5185\u6b6f\u8eca (Internal)", "\u30e9\u30c3\u30af (Rack)"]);
+        ddNodeKind.selection = 0;
 
-        // Row 2: Type, Parent, Relation, Teeth, Angle (Parent-first order!)
+        // Row 2: Parent, Relation & Teeth
         var rowNode2 = pnlNodeDetail.add("group");
         rowNode2.orientation = "row";
         rowNode2.alignChildren = ["left", "center"];
-        rowNode2.spacing = 8;
-        rowNode2.add("statictext", undefined, "\u7a2e\u5225:");
-        var ddNodeKind = rowNode2.add("dropdownlist", undefined, ["\u5916\u6b6f\u8eca (Spur)", "\u5185\u6b6f\u8eca (Internal)", "\u30e9\u30c3\u30af (Rack)"]);
-        ddNodeKind.selection = 0;
-
-        rowNode2.add("statictext", undefined, " \u63a5\u7d9a\u89aa:");
+        rowNode2.spacing = 6;
+        rowNode2.add("statictext", undefined, "\u63a5\u7d9a\u89aa:");
         var ddNodeParent = rowNode2.add("dropdownlist", undefined, ["(\u306a\u3057 / \u30eb\u30fc\u30c8)"]);
         ddNodeParent.selection = 0;
-
         rowNode2.add("statictext", undefined, " \u63a5\u7d9a:");
         var ddNodeRelation = rowNode2.add("dropdownlist", undefined, ["\u565b\u5408 (Mesh)", "\u540c\u8ef8 (Coaxial)"]);
         ddNodeRelation.selection = 0;
-
         var lblNodeZ = rowNode2.add("statictext", undefined, " \u6b6f\u6570:");
-        var etNodeZ = rowNode2.add("edittext", undefined, "18");
-        etNodeZ.characters = 4;
+        var etNodeZ = rowNode2.add("edittext", undefined, "18"); etNodeZ.characters = 4;
 
-        var lblNodeAngle = rowNode2.add("statictext", undefined, " \u63a5\u7d9a\u89d2\u5ea6(deg):");
-        lblNodeAngle.helpTip = "\u89aa\u30ae\u30a2\u306e\u4e2d\u5fc3\u304b\u3089\u898b\u3066X\u8ef8\u6b63\u65b9\u5411(\u53f3\u5411\u304d0\u5ea6)\u304b\u3089\u4f55\u5ea6\u306e\u4f4d\u7f6e\u3067\u30d4\u30c3\u30c1\u5186\u304c\u63a5\u3059\u308b\u304b\u3092\u6307\u5b9a\u3057\u307e\u3057\u305f (\u53cd\u6642\u8a08\u56de\u308a\u304c\u6b63)";
-        var etNodeAngle = rowNode2.add("edittext", undefined, "0");
-        etNodeAngle.characters = 4;
-
-        // Row 3: Shaft Diameter & Shape, Rim/Back Height, Profile Shift
+        // Row 3: Angle, Shaft Diameter & Shape
         var rowNode3 = pnlNodeDetail.add("group");
         rowNode3.orientation = "row";
         rowNode3.alignChildren = ["left", "center"];
-        rowNode3.spacing = 8;
-
-        rowNode3.add("statictext", undefined, "\u8ef8\u7a74\u5f84:");
-        var etNodeShaft = rowNode3.add("edittext", undefined, "5.0");
-        etNodeShaft.characters = 4;
+        rowNode3.spacing = 6;
+        var lblNodeAngle = rowNode3.add("statictext", undefined, "\u914d\u7f6e\u89d2(deg):");
+        lblNodeAngle.helpTip = "\u89aa\u30ae\u30a2\u306e\u4e2d\u5fc3\u304b\u3089\u898b\u3066X\u8ef8\u6b63\u65b9\u5411(\u53f3\u5411\u304d0\u5ea6)\u304b\u3089\u4f55\u5ea6\u306e\u4f4d\u7f6e\u3067\u30d4\u30c3\u30c1\u5186\u304c\u63a5\u3059\u308b\u304b\u3092\u6307\u5b9a";
+        var etNodeAngle = rowNode3.add("edittext", undefined, "0"); etNodeAngle.characters = 4;
+        rowNode3.add("statictext", undefined, " \u8ef8\u5f84:");
+        var etNodeShaft = rowNode3.add("edittext", undefined, "5.0"); etNodeShaft.characters = 4;
         rowNode3.add("statictext", undefined, "mm");
-
         rowNode3.add("statictext", undefined, " \u5f62\u72b6:");
         var ddNodeShaftType = rowNode3.add("dropdownlist", undefined, ["\u4e38\u7a74", "D\u30ab\u30c3\u30c8", "\u30ad\u30fc\u6e4d", "\u306a\u3057"]);
         ddNodeShaftType.selection = 0;
 
-        var lblNodeBackHeight = rowNode3.add("statictext", undefined, " \u539a\u307f/\u80cc\u9762:");
-        var etNodeBackHeight = rowNode3.add("edittext", undefined, "6.0");
-        etNodeBackHeight.characters = 4;
-        rowNode3.add("statictext", undefined, "mm");
+        // Row 3b: Back / Rim Height & Profile Shift
+        var rowNode3b = pnlNodeDetail.add("group");
+        rowNode3b.orientation = "row";
+        rowNode3b.alignChildren = ["left", "center"];
+        rowNode3b.spacing = 6;
+        var lblNodeBackHeight = rowNode3b.add("statictext", undefined, "\u80cc\u9762/\u539a\u307f:");
+        var etNodeBackHeight = rowNode3b.add("edittext", undefined, "6.0"); etNodeBackHeight.characters = 4;
+        rowNode3b.add("statictext", undefined, "mm");
+        rowNode3b.add("statictext", undefined, "  \u8ee2\u4f4dx:");
+        var etNodeShift = rowNode3b.add("edittext", undefined, "0.0"); etNodeShift.characters = 4;
 
-        rowNode3.add("statictext", undefined, " \u8ee2\u4f4dx:");
-        var etNodeShift = rowNode3.add("edittext", undefined, "0.0");
-        etNodeShift.characters = 4;
-
-        // Row 4: Stage & Stage Parameters (Module without unit, Alpha, Backlash)
+        // Row 4: Stage, Module & Alpha
         var rowNode4 = pnlNodeDetail.add("group");
         rowNode4.orientation = "row";
         rowNode4.alignChildren = ["left", "center"];
-        rowNode4.spacing = 8;
-
+        rowNode4.spacing = 6;
         rowNode4.add("statictext", undefined, "\u6bb5\u756a\u53f7:");
-        var etNodeStage = rowNode4.add("edittext", undefined, "1");
-        etNodeStage.characters = 3;
-
+        var etNodeStage = rowNode4.add("edittext", undefined, "1"); etNodeStage.characters = 3;
         rowNode4.add("statictext", undefined, " \u30e2\u30b8\u30e5\u30fc\u30eb:");
-        var etNodeModule = rowNode4.add("edittext", undefined, "2.0");
-        etNodeModule.characters = 4;
+        var etNodeModule = rowNode4.add("edittext", undefined, "2.0"); etNodeModule.characters = 4;
+        rowNode4.add("statictext", undefined, " \u5727\u529b\u89d2:");
+        var etNodeAlpha = rowNode4.add("edittext", undefined, "20"); etNodeAlpha.characters = 4;
 
-        rowNode4.add("statictext", undefined, " \u5727\u529b\u89d2(deg):");
-        var etNodeAlpha = rowNode4.add("edittext", undefined, "20");
-        etNodeAlpha.characters = 4;
-
-        rowNode4.add("statictext", undefined, " \u30d0\u30c3\u30af\u30e9\u30c3\u30b7(mm):");
-        var etNodeBacklash = rowNode4.add("edittext", undefined, "0.15");
-        etNodeBacklash.characters = 4;
+        // Row 4b: Backlash & Tip Rounding
+        var rowNode4b = pnlNodeDetail.add("group");
+        rowNode4b.orientation = "row";
+        rowNode4b.alignChildren = ["left", "center"];
+        rowNode4b.spacing = 6;
+        rowNode4b.add("statictext", undefined, "\u30d0\u30c3\u30af\u30e9\u30c3\u30b7(mm):");
+        var etNodeBacklash = rowNode4b.add("edittext", undefined, "0.15"); etNodeBacklash.characters = 4;
+        rowNode4b.add("statictext", undefined, " \u6b6f\u5148\u4e38\u307f(mm):");
+        var etNodeTipRounding = rowNode4b.add("edittext", undefined, "0.0"); etNodeTipRounding.characters = 4;
 
         // Row 5: Mutilated / Intermittent Gear Settings
         var rowNode5 = pnlNodeDetail.add("group");
@@ -8009,57 +8033,66 @@ var DialogView = (function () {
         } catch (eGfx) {}
 
         // Action Buttons: Row 1 (Basic Gear Elements)
+        // Action Buttons: Row 1 (Basic Gear Elements - 4 buttons)
         var rowNodeBtns1 = pnlNodeDetail.add("group");
         rowNodeBtns1.orientation = "row";
         rowNodeBtns1.alignChildren = ["left", "center"];
         rowNodeBtns1.spacing = 6;
+        var btnAddSpur = rowNodeBtns1.add("button", undefined, "+ \u5916\u6b6f\u8eca");
+        var btnAddCoaxial = rowNodeBtns1.add("button", undefined, "+ \u540c\u8ef8\u30ae\u30a2");
+        var btnAddInternal = rowNodeBtns1.add("button", undefined, "+ \u5185\u6b6f\u8eca");
+        var btnAddRack = rowNodeBtns1.add("button", undefined, "+ \u30e9\u30c3\u30af");
 
-        var btnAddSpur = rowNodeBtns1.add("button", undefined, "+ \u5916\u6b6f\u8eca\u8ffd\u52a0");
-        var btnAddCoaxial = rowNodeBtns1.add("button", undefined, "+ \u540c\u8ef8\u30ae\u30a2\u8ffd\u52a0");
-        var btnAddInternal = rowNodeBtns1.add("button", undefined, "+ \u5185\u6b6f\u8eca\u8ffd\u52a0");
-        var btnAddRack = rowNodeBtns1.add("button", undefined, "+ \u30e9\u30c3\u30af\u8ffd\u52a0");
-
-        // Action Buttons: Row 2 (Complex Mechanisms & Utilities)
+        // Action Buttons: Row 2 (Complex Mechanisms - 3 buttons)
         var rowNodeBtns2 = pnlNodeDetail.add("group");
         rowNodeBtns2.orientation = "row";
         rowNodeBtns2.alignChildren = ["left", "center"];
         rowNodeBtns2.spacing = 6;
+        var btnAddIntermittent = rowNodeBtns2.add("button", undefined, "+ \u9593\u6b20\u30da\u30a2\u8ffd\u52a0");
+        var btnAddPlanetary = rowNodeBtns2.add("button", undefined, "+ \u904a\u661f\u6a5f\u69cb\u8ffd\u52a0");
+        var btnAddParadox = rowNodeBtns2.add("button", undefined, "+ \u4e0d\u601d\u8b70\u904a\u661f\u8ffd\u52a0");
 
-        var btnAddIntermittent = rowNodeBtns2.add("button", undefined, "+ \u9593\u6b20\u6b6f\u8eca\u30da\u30a2\u8ffd\u52a0");
-        var btnAddPlanetary = rowNodeBtns2.add("button", undefined, "+ \u904a\u661f\u6b6f\u8eca\u6a5f\u69cb\u8ffd\u52a0");
-        var btnAddParadox = rowNodeBtns2.add("button", undefined, "+ \u4e0d\u601d\u8b70\u904a\u661f\u6a5f\u69cb\u8ffd\u52a0");
-        var btnDeleteNode = rowNodeBtns2.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
-        var btnImportCSV = rowNodeBtns2.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
+        // Action Buttons: Row 3 (Delete & CSV - 2 buttons)
+        var rowNodeBtns3 = pnlNodeDetail.add("group");
+        rowNodeBtns3.orientation = "row";
+        rowNodeBtns3.alignChildren = ["left", "center"];
+        rowNodeBtns3.spacing = 6;
+        var btnDeleteNode = rowNodeBtns3.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
+        var btnImportCSV = rowNodeBtns3.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
 
 // (pnlCreationOptions moved to paneRight)
 
         // 5. Placement & Origin Panel (Renamed G1 to Root Gear Center)
         var pnlPlacement = paneLeft.add("panel", undefined, "\u4f5c\u6210\u4f4d\u7f6e (Placement & Origin)");
-        pnlPlacement.orientation = "row";
-        pnlPlacement.alignChildren = ["left", "center"];
-        pnlPlacement.spacing = 8;
+        pnlPlacement.orientation = "column";
+        pnlPlacement.alignChildren = ["fill", "top"];
+        pnlPlacement.spacing = 4;
         pnlPlacement.margins = 6;
 
-        pnlPlacement.add("statictext", undefined, "\u57fa\u6e96\u70b9:");
-        var ddPlacementRef = pnlPlacement.add("dropdownlist", undefined, [
+        var rowPlace1 = pnlPlacement.add("group");
+        rowPlace1.orientation = "row";
+        rowPlace1.alignChildren = ["left", "center"];
+        rowPlace1.spacing = 6;
+        rowPlace1.add("statictext", undefined, "\u57fa\u6e96\u70b9:");
+        var ddPlacementRef = rowPlace1.add("dropdownlist", undefined, [
             "\u7b2c1\u30ae\u30a2(\u30eb\u30fc\u30c8)\u306e\u57fa\u6e96\u5186\u4e2d\u5fc3",
             "\u8f2a\u5217\u5168\u4f53\u306e\u4e2d\u5fc3 (Train BBox Center)",
             "\u30a2\u30fc\u30c8\u30dc\u30fc\u30c9\u4e2d\u592e (Artboard Center)",
             "\u9078\u629e\u30aa\u30d6\u30b8\u30a8\u30af\u30c8\u4f4d\u7f6e (Selection Center)"
         ]);
         ddPlacementRef.selection = 0;
+        var btnUpdatePlacementCoords = rowPlace1.add("button", undefined, "\u5ea7\u6a19\u66f4\u65b0");
 
-        pnlPlacement.add("statictext", undefined, "X:");
-        var etTargetX = pnlPlacement.add("edittext", undefined, "0.0");
-        etTargetX.characters = 6;
-        pnlPlacement.add("statictext", undefined, "mm");
-
-        pnlPlacement.add("statictext", undefined, "Y:");
-        var etTargetY = pnlPlacement.add("edittext", undefined, "0.0");
-        etTargetY.characters = 6;
-        pnlPlacement.add("statictext", undefined, "mm");
-
-        var btnUpdatePlacementCoords = pnlPlacement.add("button", undefined, "\u5ea7\u6a19\u66f4\u65b0");
+        var rowPlace2 = pnlPlacement.add("group");
+        rowPlace2.orientation = "row";
+        rowPlace2.alignChildren = ["left", "center"];
+        rowPlace2.spacing = 6;
+        rowPlace2.add("statictext", undefined, "X:");
+        var etTargetX = rowPlace2.add("edittext", undefined, "0.0"); etTargetX.characters = 6;
+        rowPlace2.add("statictext", undefined, "mm");
+        rowPlace2.add("statictext", undefined, "  Y:");
+        var etTargetY = rowPlace2.add("edittext", undefined, "0.0"); etTargetY.characters = 6;
+        rowPlace2.add("statictext", undefined, "mm");
 
         function updatePlacementRefLabel() {
             var rootNode = (trainNodes && trainNodes.length > 0) ? trainNodes[0] : null;
@@ -8226,7 +8259,7 @@ var DialogView = (function () {
         pnlCalc.margins = 6;
 
         var lblCalcSummary = pnlCalc.add("statictext", undefined, "\u6b6f\u8eca\u8af8\u5143\u3092\u8a08\u7b97\u4e2d...");
-        lblCalcSummary.characters = 65;
+        lblCalcSummary.characters = 45;
 
         // 2-Pane layout active
 
@@ -9936,19 +9969,19 @@ var DialogView = (function () {
                 txt = "(\u5186\u306f\u691c\u51fa\u3055\u308c\u3066\u3044\u307e\u305b\u3093)";
                 chkUseCircle.value = false;
                 chkUseCircle.enabled = false;
-                rowCircleOptions.enabled = false;
+                rowCircle2.enabled = false; rowCircle3.enabled = false;
                 grpMultiCircle.enabled = false;
                 btnAutoBuildTrain.enabled = false;
             } else if (selectedCircles.length === 1) {
                 txt = "\u691c\u51fa: 1\u500b (\u76f4\u5f84 " + selectedCircles[0].diameterMm + " mm)";
                 chkUseCircle.enabled = true;
-                rowCircleOptions.enabled = true;
+                rowCircle2.enabled = true; rowCircle3.enabled = true;
                 grpMultiCircle.enabled = false;
                 btnAutoBuildTrain.enabled = false;
             } else {
                 txt = "\u691c\u51fa: " + selectedCircles.length + "\u500b (\u8f2a\u5217\u81ea\u52d5\u69cb\u7bc9\u53ef\u80fd)";
                 chkUseCircle.enabled = true;
-                rowCircleOptions.enabled = true;
+                rowCircle2.enabled = true; rowCircle3.enabled = true;
                 grpMultiCircle.enabled = true;
                 btnAutoBuildTrain.enabled = true;
             }
@@ -10301,12 +10334,12 @@ if (isNaN(m) || m <= 0) {
 
 /**
  * MainController.jsxinc - Main Execution Dispatcher for Adobe Illustrator
- * Version: 0.9.36
+ * Version: 0.9.37
  * Part of GearDrawer Architecture
  */
 
 var MainController = (function () {
-    var _version = "0.9.36";
+    var _version = "0.9.37";
 
     function run(version) {
         if (version) _version = version;
@@ -10603,4 +10636,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.36');
+MainController.run('0.9.37');
