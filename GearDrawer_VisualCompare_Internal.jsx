@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer_VisualCompare_Internal - Visual Verification for Internal Ring Gear
- * Version: 0.9.32
+ * Version: 0.9.33
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  */
@@ -4705,17 +4705,27 @@ function logWarn(category, msg, data) {
         var planetShaft = (spec.planetShaft !== undefined) ? spec.planetShaft : 4.0;
         var rim = (spec.rimDiameter !== undefined) ? spec.rimDiameter : ((m * zr) + 16.0);
 
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "COAXIAL") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var sunId = prefix ? (prefix + "Sun") : "S1";
+        var relAngle = (spec.angleDeg !== undefined) ? spec.angleDeg : ((spec.relativeAngleDeg !== undefined) ? spec.relativeAngleDeg : 0.0);
+
         var nodes = [];
-        // 1. Sun gear at root
+        // 1. Sun gear (connected to parent if specified)
         nodes.push({
-            id: "S1",
+            id: sunId,
             gearType: "SPUR",
-            parentId: null,
-            relationType: "ROOT",
+            parentId: parentId,
+            relationType: relationType,
             z: zs,
             m: m,
             alphaDeg: alphaDeg,
-            relativeAngleDeg: 0.0,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            relativeAngleDeg: relAngle,
+            angleDeg: relAngle,
             shaftDiameter: sunShaft,
             rimDiameter: (m * zs) + 12.0
         });
@@ -4723,30 +4733,38 @@ function logWarn(category, msg, data) {
         // 2. Planets orbiting Sun
         var spacingDeg = 360.0 / numPlanets;
         for (var i = 0; i < numPlanets; i++) {
+            var planetId = prefix ? (prefix + "P" + (i + 1)) : ("P" + (i + 1));
             nodes.push({
-                id: "P" + (i + 1),
+                id: planetId,
                 gearType: "SPUR",
-                parentId: "S1",
+                parentId: sunId,
                 relationType: "MESHING",
                 z: zp,
                 m: m,
                 alphaDeg: alphaDeg,
+                stageIndex: stageIdx,
+                layerIndex: stageIdx,
                 relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                angleDeg: Math.round(i * spacingDeg * 100) / 100,
                 shaftDiameter: planetShaft,
                 rimDiameter: (m * zp) + 12.0
             });
         }
 
         // 3. Ring gear coaxial with Sun (concentric)
+        var ringId = prefix ? (prefix + "Ring") : "R1";
         nodes.push({
-            id: "R1",
+            id: ringId,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr,
             m: m,
             alphaDeg: alphaDeg,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim
         });
@@ -4772,17 +4790,27 @@ function logWarn(category, msg, data) {
         var rim1 = (spec.rimDiameter1 !== undefined) ? spec.rimDiameter1 : ((m * zr1) + 16.0);
         var rim2 = (spec.rimDiameter2 !== undefined) ? spec.rimDiameter2 : ((m * zr2) + 16.0);
 
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "COAXIAL") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var sunId = prefix ? (prefix + "Sun") : "S1";
+        var relAngle = (spec.angleDeg !== undefined) ? spec.angleDeg : ((spec.relativeAngleDeg !== undefined) ? spec.relativeAngleDeg : 0.0);
+
         var nodes = [];
-        // 1. Sun gear at root
+        // 1. Sun gear
         nodes.push({
-            id: "S1",
+            id: sunId,
             gearType: "SPUR",
-            parentId: null,
-            relationType: "ROOT",
+            parentId: parentId,
+            relationType: relationType,
             z: zs,
             m: m,
             alphaDeg: alphaDeg,
-            relativeAngleDeg: 0.0,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            relativeAngleDeg: relAngle,
+            angleDeg: relAngle,
             shaftDiameter: sunShaft,
             rimDiameter: (m * zs) + 12.0
         });
@@ -4790,50 +4818,60 @@ function logWarn(category, msg, data) {
         // 2. Planets orbiting Sun
         var spacingDeg = 360.0 / numPlanets;
         for (var i = 0; i < numPlanets; i++) {
+            var planetId = prefix ? (prefix + "P" + (i + 1)) : ("P" + (i + 1));
             nodes.push({
-                id: "P" + (i + 1),
+                id: planetId,
                 gearType: "SPUR",
-                parentId: "S1",
+                parentId: sunId,
                 relationType: "MESHING",
                 z: zp,
                 m: m,
                 alphaDeg: alphaDeg,
+                stageIndex: stageIdx,
+                layerIndex: stageIdx,
                 relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                angleDeg: Math.round(i * spacingDeg * 100) / 100,
                 shaftDiameter: planetShaft,
                 rimDiameter: (m * zp) + 12.0
             });
         }
 
-        // 3. Fixed Ring 1 coaxial with Sun (Stage 1)
+        // 3. Fixed Ring 1 coaxial with Sun (Stage N)
+        var ring1Id = prefix ? (prefix + "Ring1_Fixed") : "R1";
         nodes.push({
-            id: "R1",
+            id: ring1Id,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr1,
             m: m,
             alphaDeg: alphaDeg,
-            stageIndex: 1,
-            layerName: "Ring1_Fixed",
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            layerName: ring1Id,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim1
         });
 
-        // 4. Output Ring 2 coaxial with Sun (Stage 2) with profile shift xr2
+        // 4. Output Ring 2 coaxial with Sun (Stage N + 1) with profile shift xr2
+        var ring2Id = prefix ? (prefix + "Ring2_Output") : "R2";
         nodes.push({
-            id: "R2",
+            id: ring2Id,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr2,
             m: m,
             x: xr2,
             profileShiftX: xr2,
             alphaDeg: alphaDeg,
-            stageIndex: 2,
-            layerName: "Ring2_Output",
+            stageIndex: stageIdx + 1,
+            layerIndex: stageIdx + 1,
+            layerName: ring2Id,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim2
         });
@@ -4864,8 +4902,13 @@ function logWarn(category, msg, data) {
         var shaftOpt1 = spec.shaftOptions1 || null;
         var shaftOpt2 = spec.shaftOptions2 || null;
 
-        var driverId = spec.driverId || "G1_Driver";
-        var drivenId = spec.drivenId || "G2_Driven";
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "MESHING") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var driverId = spec.driverId || (prefix ? (prefix + "Driver") : "G1_Driver");
+        var drivenId = spec.drivenId || (prefix ? (prefix + "Driven") : "G2_Driven");
+        var driverRelAngle = (spec.driverAngleDeg !== undefined) ? spec.driverAngleDeg : 0.0;
 
         var driverNode = {
             id: driverId,
@@ -4878,12 +4921,12 @@ function logWarn(category, msg, data) {
             shaftDiameter: shaft1,
             shaftType: shaftType1,
             shaftOptions: shaftOpt1,
-            parentId: null,
-            relationType: "ROOT",
-            angleDeg: 0.0,
-            relativeAngleDeg: 0.0,
-            stageIndex: 1,
-            layerIndex: 1,
+            parentId: parentId,
+            relationType: relationType,
+            angleDeg: driverRelAngle,
+            relativeAngleDeg: driverRelAngle,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             isMutilated: true,
             intermittentRole: "DRIVER",
             activeTeeth: moveTeeth,
@@ -4909,8 +4952,8 @@ function logWarn(category, msg, data) {
             relationType: "MESHING",
             angleDeg: angleDeg,
             relativeAngleDeg: angleDeg,
-            stageIndex: 1,
-            layerIndex: 1,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             isMutilated: true,
             intermittentRole: "DRIVEN",
             divisions: divisions,

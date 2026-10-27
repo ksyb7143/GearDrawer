@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.32
+ * Version: 0.9.33
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -4715,17 +4715,27 @@ function logWarn(category, msg, data) {
         var planetShaft = (spec.planetShaft !== undefined) ? spec.planetShaft : 4.0;
         var rim = (spec.rimDiameter !== undefined) ? spec.rimDiameter : ((m * zr) + 16.0);
 
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "COAXIAL") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var sunId = prefix ? (prefix + "Sun") : "S1";
+        var relAngle = (spec.angleDeg !== undefined) ? spec.angleDeg : ((spec.relativeAngleDeg !== undefined) ? spec.relativeAngleDeg : 0.0);
+
         var nodes = [];
-        // 1. Sun gear at root
+        // 1. Sun gear (connected to parent if specified)
         nodes.push({
-            id: "S1",
+            id: sunId,
             gearType: "SPUR",
-            parentId: null,
-            relationType: "ROOT",
+            parentId: parentId,
+            relationType: relationType,
             z: zs,
             m: m,
             alphaDeg: alphaDeg,
-            relativeAngleDeg: 0.0,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            relativeAngleDeg: relAngle,
+            angleDeg: relAngle,
             shaftDiameter: sunShaft,
             rimDiameter: (m * zs) + 12.0
         });
@@ -4733,30 +4743,38 @@ function logWarn(category, msg, data) {
         // 2. Planets orbiting Sun
         var spacingDeg = 360.0 / numPlanets;
         for (var i = 0; i < numPlanets; i++) {
+            var planetId = prefix ? (prefix + "P" + (i + 1)) : ("P" + (i + 1));
             nodes.push({
-                id: "P" + (i + 1),
+                id: planetId,
                 gearType: "SPUR",
-                parentId: "S1",
+                parentId: sunId,
                 relationType: "MESHING",
                 z: zp,
                 m: m,
                 alphaDeg: alphaDeg,
+                stageIndex: stageIdx,
+                layerIndex: stageIdx,
                 relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                angleDeg: Math.round(i * spacingDeg * 100) / 100,
                 shaftDiameter: planetShaft,
                 rimDiameter: (m * zp) + 12.0
             });
         }
 
         // 3. Ring gear coaxial with Sun (concentric)
+        var ringId = prefix ? (prefix + "Ring") : "R1";
         nodes.push({
-            id: "R1",
+            id: ringId,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr,
             m: m,
             alphaDeg: alphaDeg,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim
         });
@@ -4782,17 +4800,27 @@ function logWarn(category, msg, data) {
         var rim1 = (spec.rimDiameter1 !== undefined) ? spec.rimDiameter1 : ((m * zr1) + 16.0);
         var rim2 = (spec.rimDiameter2 !== undefined) ? spec.rimDiameter2 : ((m * zr2) + 16.0);
 
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "COAXIAL") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var sunId = prefix ? (prefix + "Sun") : "S1";
+        var relAngle = (spec.angleDeg !== undefined) ? spec.angleDeg : ((spec.relativeAngleDeg !== undefined) ? spec.relativeAngleDeg : 0.0);
+
         var nodes = [];
-        // 1. Sun gear at root
+        // 1. Sun gear
         nodes.push({
-            id: "S1",
+            id: sunId,
             gearType: "SPUR",
-            parentId: null,
-            relationType: "ROOT",
+            parentId: parentId,
+            relationType: relationType,
             z: zs,
             m: m,
             alphaDeg: alphaDeg,
-            relativeAngleDeg: 0.0,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            relativeAngleDeg: relAngle,
+            angleDeg: relAngle,
             shaftDiameter: sunShaft,
             rimDiameter: (m * zs) + 12.0
         });
@@ -4800,50 +4828,60 @@ function logWarn(category, msg, data) {
         // 2. Planets orbiting Sun
         var spacingDeg = 360.0 / numPlanets;
         for (var i = 0; i < numPlanets; i++) {
+            var planetId = prefix ? (prefix + "P" + (i + 1)) : ("P" + (i + 1));
             nodes.push({
-                id: "P" + (i + 1),
+                id: planetId,
                 gearType: "SPUR",
-                parentId: "S1",
+                parentId: sunId,
                 relationType: "MESHING",
                 z: zp,
                 m: m,
                 alphaDeg: alphaDeg,
+                stageIndex: stageIdx,
+                layerIndex: stageIdx,
                 relativeAngleDeg: Math.round(i * spacingDeg * 100) / 100,
+                angleDeg: Math.round(i * spacingDeg * 100) / 100,
                 shaftDiameter: planetShaft,
                 rimDiameter: (m * zp) + 12.0
             });
         }
 
-        // 3. Fixed Ring 1 coaxial with Sun (Stage 1)
+        // 3. Fixed Ring 1 coaxial with Sun (Stage N)
+        var ring1Id = prefix ? (prefix + "Ring1_Fixed") : "R1";
         nodes.push({
-            id: "R1",
+            id: ring1Id,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr1,
             m: m,
             alphaDeg: alphaDeg,
-            stageIndex: 1,
-            layerName: "Ring1_Fixed",
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
+            layerName: ring1Id,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim1
         });
 
-        // 4. Output Ring 2 coaxial with Sun (Stage 2) with profile shift xr2
+        // 4. Output Ring 2 coaxial with Sun (Stage N + 1) with profile shift xr2
+        var ring2Id = prefix ? (prefix + "Ring2_Output") : "R2";
         nodes.push({
-            id: "R2",
+            id: ring2Id,
             gearType: "INTERNAL",
-            parentId: "S1",
+            parentId: sunId,
             relationType: "COAXIAL",
             z: zr2,
             m: m,
             x: xr2,
             profileShiftX: xr2,
             alphaDeg: alphaDeg,
-            stageIndex: 2,
-            layerName: "Ring2_Output",
+            stageIndex: stageIdx + 1,
+            layerIndex: stageIdx + 1,
+            layerName: ring2Id,
             relativeAngleDeg: 0.0,
+            angleDeg: 0.0,
             shaftDiameter: 5.0,
             rimDiameter: rim2
         });
@@ -4874,8 +4912,13 @@ function logWarn(category, msg, data) {
         var shaftOpt1 = spec.shaftOptions1 || null;
         var shaftOpt2 = spec.shaftOptions2 || null;
 
-        var driverId = spec.driverId || "G1_Driver";
-        var drivenId = spec.drivenId || "G2_Driven";
+        var parentId = spec.parentId || null;
+        var relationType = parentId ? (spec.relationType || "MESHING") : "ROOT";
+        var stageIdx = (spec.stageIndex !== undefined && spec.stageIndex !== null) ? parseInt(spec.stageIndex, 10) : 1;
+        var prefix = spec.idPrefix || "";
+        var driverId = spec.driverId || (prefix ? (prefix + "Driver") : "G1_Driver");
+        var drivenId = spec.drivenId || (prefix ? (prefix + "Driven") : "G2_Driven");
+        var driverRelAngle = (spec.driverAngleDeg !== undefined) ? spec.driverAngleDeg : 0.0;
 
         var driverNode = {
             id: driverId,
@@ -4888,12 +4931,12 @@ function logWarn(category, msg, data) {
             shaftDiameter: shaft1,
             shaftType: shaftType1,
             shaftOptions: shaftOpt1,
-            parentId: null,
-            relationType: "ROOT",
-            angleDeg: 0.0,
-            relativeAngleDeg: 0.0,
-            stageIndex: 1,
-            layerIndex: 1,
+            parentId: parentId,
+            relationType: relationType,
+            angleDeg: driverRelAngle,
+            relativeAngleDeg: driverRelAngle,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             isMutilated: true,
             intermittentRole: "DRIVER",
             activeTeeth: moveTeeth,
@@ -4919,8 +4962,8 @@ function logWarn(category, msg, data) {
             relationType: "MESHING",
             angleDeg: angleDeg,
             relativeAngleDeg: angleDeg,
-            stageIndex: 1,
-            layerIndex: 1,
+            stageIndex: stageIdx,
+            layerIndex: stageIdx,
             isMutilated: true,
             intermittentRole: "DRIVEN",
             divisions: divisions,
@@ -7956,18 +7999,28 @@ var DialogView = (function () {
             redGfx.foregroundColor = redGfx.newPen(redGfx.PenType.SOLID_COLOR, [0.85, 0.0, 0.0, 1], 1);
         } catch (eGfx) {}
 
-        // Action Buttons Row
-        var rowNodeBtns = pnlNodeDetail.add("group");
-        rowNodeBtns.orientation = "row";
-        rowNodeBtns.alignChildren = ["left", "center"];
-        rowNodeBtns.spacing = 8;
+        // Action Buttons: Row 1 (Basic Gear Elements)
+        var rowNodeBtns1 = pnlNodeDetail.add("group");
+        rowNodeBtns1.orientation = "row";
+        rowNodeBtns1.alignChildren = ["left", "center"];
+        rowNodeBtns1.spacing = 6;
 
-        var btnAddSpur = rowNodeBtns.add("button", undefined, "+ \u5916\u6b6f\u8eca\u8ffd\u52a0");
-        var btnAddInternal = rowNodeBtns.add("button", undefined, "+ \u5185\u6b6f\u8eca\u8ffd\u52a0");
-        var btnAddRack = rowNodeBtns.add("button", undefined, "+ \u30e9\u30c3\u30af\u8ffd\u52a0");
-        var btnAddIntermittent = rowNodeBtns.add("button", undefined, "+ \u9593\u6b20\u6b6f\u8eca\u30da\u30a2\u8ffd\u52a0");
-        var btnDeleteNode = rowNodeBtns.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
-        var btnImportCSV = rowNodeBtns.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
+        var btnAddSpur = rowNodeBtns1.add("button", undefined, "+ \u5916\u6b6f\u8eca\u8ffd\u52a0");
+        var btnAddCoaxial = rowNodeBtns1.add("button", undefined, "+ \u540c\u8ef8\u30ae\u30a2\u8ffd\u52a0");
+        var btnAddInternal = rowNodeBtns1.add("button", undefined, "+ \u5185\u6b6f\u8eca\u8ffd\u52a0");
+        var btnAddRack = rowNodeBtns1.add("button", undefined, "+ \u30e9\u30c3\u30af\u8ffd\u52a0");
+
+        // Action Buttons: Row 2 (Complex Mechanisms & Utilities)
+        var rowNodeBtns2 = pnlNodeDetail.add("group");
+        rowNodeBtns2.orientation = "row";
+        rowNodeBtns2.alignChildren = ["left", "center"];
+        rowNodeBtns2.spacing = 6;
+
+        var btnAddIntermittent = rowNodeBtns2.add("button", undefined, "+ \u9593\u6b20\u6b6f\u8eca\u30da\u30a2\u8ffd\u52a0");
+        var btnAddPlanetary = rowNodeBtns2.add("button", undefined, "+ \u904a\u661f\u6b6f\u8eca\u6a5f\u69cb\u8ffd\u52a0");
+        var btnAddParadox = rowNodeBtns2.add("button", undefined, "+ \u4e0d\u601d\u8b70\u904a\u661f\u6a5f\u69cb\u8ffd\u52a0");
+        var btnDeleteNode = rowNodeBtns2.add("button", undefined, "- \u9078\u629e\u30ae\u30a2\u524a\u9664");
+        var btnImportCSV = rowNodeBtns2.add("button", undefined, "CSV/TSV\u8aad\u8fbc...");
 
         // --- View 2: Standard 2K-H Planetary ---
         var grpPlanetary = pnlConfig.add("group");
@@ -8447,6 +8500,69 @@ var DialogView = (function () {
             return 1;
         }
 
+        // --- Stage Driver & Unified Parameters Management ---
+        function getStageDriverNode(stageIdx, nodes) {
+            if (!nodes || nodes.length === 0) return null;
+            stageIdx = parseInt(stageIdx, 10) || 1;
+
+            // 1. Root gear in this stage
+            for (var i = 0; i < nodes.length; i++) {
+                var n = nodes[i];
+                if ((parseInt(n.stageIndex, 10) || 1) === stageIdx && (!n.parentId || n.relationType === "ROOT")) {
+                    return n;
+                }
+            }
+
+            // 2. Input gear to this stage (whose parent belongs to a different stage, e.g. coaxial pair)
+            var nodeMap = {};
+            for (var j = 0; j < nodes.length; j++) {
+                nodeMap[nodes[j].id] = nodes[j];
+            }
+            for (var k = 0; k < nodes.length; k++) {
+                var cand = nodes[k];
+                if ((parseInt(cand.stageIndex, 10) || 1) === stageIdx && cand.parentId) {
+                    var p = nodeMap[cand.parentId];
+                    if (p && (parseInt(p.stageIndex, 10) || 1) !== stageIdx) {
+                        return cand;
+                    }
+                }
+            }
+
+            // 3. Fallback: first gear in this stage
+            for (var m = 0; m < nodes.length; m++) {
+                if ((parseInt(nodes[m].stageIndex, 10) || 1) === stageIdx) return nodes[m];
+            }
+            return null;
+        }
+
+        function inheritStageParameters(targetNode, stageIdx, nodes) {
+            if (!targetNode) return;
+            stageIdx = parseInt(stageIdx, 10) || 1;
+            var driver = getStageDriverNode(stageIdx, nodes);
+            if (driver && driver !== targetNode) {
+                targetNode.m = driver.m;
+                targetNode.alphaDeg = driver.alphaDeg;
+                targetNode.backlash = driver.backlash;
+            }
+        }
+
+        function propagateStageParameters(editedNode, nodes) {
+            if (!editedNode || !nodes) return;
+            var st = parseInt(editedNode.stageIndex, 10) || 1;
+            var driver = getStageDriverNode(st, nodes);
+            if (driver && driver.id === editedNode.id) {
+                for (var i = 0; i < nodes.length; i++) {
+                    var n = nodes[i];
+                    if ((parseInt(n.stageIndex, 10) || 1) === st && n.id !== editedNode.id) {
+                        n.m = editedNode.m;
+                        n.alphaDeg = editedNode.alphaDeg;
+                        n.backlash = editedNode.backlash;
+                        syncNodeProperties(n);
+                    }
+                }
+            }
+        }
+
         function syncNodeProperties(nd) {
             if (!nd) return;
             nd.gearType = (nd.kind === "INTERNAL") ? "INTERNAL" : ((nd.kind === "RACK") ? "RACK" : "SPUR");
@@ -8820,6 +8936,8 @@ var DialogView = (function () {
             }
 
             syncNodeProperties(nd);
+            // Automatically propagate stage-unified parameters (module, alpha, backlash) if editing stage driver
+            propagateStageParameters(nd, trainNodes);
         }
 
         trainListBox.onChange = function () {
@@ -8901,6 +9019,21 @@ var DialogView = (function () {
             var prevLock = isUpdatingFields;
             isUpdatingFields = true;
             try {
+                // If switching to COAXIAL, auto-increment stage if same as parent
+                if (ddNodeRelation.selection && ddNodeRelation.selection.index === 1 && ddNodeParent.selection && ddNodeParent.selection.index > 0) {
+                    var pId = ddNodeParent.selection.text;
+                    var pNode = null;
+                    for (var pi = 0; pi < trainNodes.length; pi++) {
+                        if (trainNodes[pi].id === pId) { pNode = trainNodes[pi]; break; }
+                    }
+                    if (pNode) {
+                        var curStage = parseInt(etNodeStage.text, 10) || 1;
+                        var pStage = parseInt(pNode.stageIndex, 10) || 1;
+                        if (curStage <= pStage) {
+                            etNodeStage.text = String(pStage + 1);
+                        }
+                    }
+                }
                 saveFieldsToCurrentNode();
                 updateCurrentSelectedRowOnly();
                 etNodeAngle.enabled = (ddNodeRelation.selection && ddNodeRelation.selection.index === 0);
@@ -8920,7 +9053,17 @@ var DialogView = (function () {
         etNodeShift.onChanging = onFieldInputChanged;
         etNodeShift.onChange = onFieldInputChanged;
         etNodeStage.onChanging = onFieldInputChanged;
-        etNodeStage.onChange = onFieldInputChanged;
+        etNodeStage.onChange = function () {
+            if (isUpdatingFields) return;
+            var newStage = parseInt(etNodeStage.text, 10) || 1;
+            var driver = getStageDriverNode(newStage, trainNodes);
+            if (driver) {
+                etNodeModule.text = String(driver.m);
+                etNodeAlpha.text = String(driver.alphaDeg);
+                etNodeBacklash.text = String(driver.backlash);
+            }
+            onFieldInputChanged();
+        };
         etNodeModule.onChanging = onFieldInputChanged;
         etNodeModule.onChange = onFieldInputChanged;
         etNodeAlpha.onChanging = onFieldInputChanged;
@@ -8969,27 +9112,73 @@ var DialogView = (function () {
             }
         };
 
+        function getSelectedOrLastNode() {
+            if (trainListBox.selection && trainNodes[trainListBox.selection.index]) {
+                return trainNodes[trainListBox.selection.index];
+            }
+            return (trainNodes.length > 0) ? trainNodes[trainNodes.length - 1] : null;
+        }
+
         btnAddSpur.onClick = function () {
             var newIdx = trainNodes.length + 1;
-            var lastNode = trainNodes[trainNodes.length - 1];
+            var parentNode = getSelectedOrLastNode();
             var newId = "G" + newIdx;
+            var targetStage = parentNode ? (parseInt(parentNode.stageIndex, 10) || 1) : 1;
+
             var newNode = {
                 id: newId,
                 kind: "SPUR",
                 gearType: "SPUR",
                 z: 24,
-                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
-                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                m: parentNode ? parentNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                backlash: parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15),
                 shaftDiameter: 5.0,
                 shaftType: "丸穴",
-                parentId: lastNode ? lastNode.id : null,
-                relationType: lastNode ? "MESHING" : "ROOT",
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "MESHING" : "ROOT",
                 angleDeg: 0,
                 relativeAngleDeg: 0,
-                stageIndex: lastNode ? lastNode.stageIndex : 1,
-                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                stageIndex: targetStage,
+                layerIndex: targetStage,
                 x: 0
             };
+            inheritStageParameters(newNode, targetStage, trainNodes);
+            syncNodeProperties(newNode);
+            trainNodes.push(newNode);
+            refreshTrainList(newId);
+            updatePreview();
+        };
+
+        btnAddCoaxial.onClick = function () {
+            var parentNode = getSelectedOrLastNode();
+            if (!parentNode) {
+                alert("同軸ギアを追加するには、親となるギアを選択してください。");
+                return;
+            }
+            var newIdx = trainNodes.length + 1;
+            var newId = "G" + newIdx;
+            var nextStage = (parseInt(parentNode.stageIndex, 10) || 1) + 1; // Stage number +1!
+
+            var newNode = {
+                id: newId,
+                kind: "SPUR",
+                gearType: "SPUR",
+                z: 18,
+                m: parseFloat(etModule.text) || parentNode.m || 2.0,
+                alphaDeg: parseFloat(etAlpha.text) || parentNode.alphaDeg || 20.0,
+                backlash: parseFloat(etBacklash.text) || parentNode.backlash || 0.15,
+                shaftDiameter: parentNode.shaftDiameter || 5.0,
+                shaftType: parentNode.shaftType || "丸穴",
+                parentId: parentNode.id,
+                relationType: "COAXIAL",
+                angleDeg: 0,
+                relativeAngleDeg: 0,
+                stageIndex: nextStage,
+                layerIndex: nextStage,
+                x: 0
+            };
+            inheritStageParameters(newNode, nextStage, trainNodes);
             syncNodeProperties(newNode);
             trainNodes.push(newNode);
             refreshTrainList(newId);
@@ -8998,26 +9187,30 @@ var DialogView = (function () {
 
         btnAddInternal.onClick = function () {
             var newIdx = trainNodes.length + 1;
-            var lastNode = trainNodes[trainNodes.length - 1];
+            var parentNode = getSelectedOrLastNode();
             var newId = "I" + newIdx;
+            var targetStage = parentNode ? (parseInt(parentNode.stageIndex, 10) || 1) : 1;
+
             var newNode = {
                 id: newId,
                 kind: "INTERNAL",
                 gearType: "INTERNAL",
                 z: 48,
-                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
-                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                m: parentNode ? parentNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                backlash: parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15),
                 shaftDiameter: 0.0,
                 shaftType: "なし",
                 rimThickness: 6.0,
-                parentId: lastNode ? lastNode.id : null,
-                relationType: lastNode ? "MESHING" : "ROOT",
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "MESHING" : "ROOT",
                 angleDeg: 0,
                 relativeAngleDeg: 0,
-                stageIndex: lastNode ? lastNode.stageIndex : 1,
-                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                stageIndex: targetStage,
+                layerIndex: targetStage,
                 x: 0
             };
+            inheritStageParameters(newNode, targetStage, trainNodes);
             syncNodeProperties(newNode);
             trainNodes.push(newNode);
             refreshTrainList(newId);
@@ -9026,28 +9219,32 @@ var DialogView = (function () {
 
         btnAddRack.onClick = function () {
             var newIdx = trainNodes.length + 1;
-            var lastNode = trainNodes[trainNodes.length - 1];
+            var parentNode = getSelectedOrLastNode();
             var newId = "R" + newIdx;
+            var targetStage = parentNode ? (parseInt(parentNode.stageIndex, 10) || 1) : 1;
+
             var newNode = {
                 id: newId,
                 kind: "RACK",
                 gearType: "RACK",
                 z: 24,
-                m: lastNode ? lastNode.m : (parseFloat(etModule.text) || 2.0),
-                alphaDeg: lastNode ? lastNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                m: parentNode ? parentNode.m : (parseFloat(etModule.text) || 2.0),
+                alphaDeg: parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0),
+                backlash: parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15),
                 backHeight: 5.0,
                 backBarHeight: 5.0,
                 rackHeight: 5.0,
                 shaftDiameter: 0.0,
                 shaftType: "なし",
-                parentId: lastNode ? lastNode.id : null,
-                relationType: lastNode ? "MESHING" : "ROOT",
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "MESHING" : "ROOT",
                 angleDeg: -90,
                 relativeAngleDeg: -90,
-                stageIndex: lastNode ? lastNode.stageIndex : 1,
-                layerIndex: lastNode ? lastNode.stageIndex : 1,
+                stageIndex: targetStage,
+                layerIndex: targetStage,
                 x: 0
             };
+            inheritStageParameters(newNode, targetStage, trainNodes);
             syncNodeProperties(newNode);
             trainNodes.push(newNode);
             refreshTrainList(newId);
@@ -9055,72 +9252,122 @@ var DialogView = (function () {
         };
 
         btnAddIntermittent.onClick = function () {
-            var mVal = parseFloat(etModule.text) || 3.0;
-            if (mVal < 2.0) mVal = 3.0; // Optimal module for laser cut intermittent indexing
-            var aVal = parseFloat(etAlpha.text) || 20.0;
-            var bVal = parseFloat(etBacklash.text) || 0.15;
-            var sVal = parseFloat(etDefShaft.text) || 5.0;
+            var parentNode = getSelectedOrLastNode();
+            var mVal = parentNode ? parentNode.m : (parseFloat(etModule.text) || 3.0);
+            if (mVal < 2.0) mVal = 3.0;
+            var aVal = parentNode ? parentNode.alphaDeg : (parseFloat(etAlpha.text) || 20.0);
+            var bVal = parentNode ? parentNode.backlash : (parseFloat(etBacklash.text) || 0.15);
+            var sVal = parentNode ? parentNode.shaftDiameter : (parseFloat(etDefShaft.text) || 5.0);
+            var stageVal = parentNode ? (parseInt(parentNode.stageIndex, 10) || 1) : 1;
 
-            var driverIdx = trainNodes.length + 1;
-            var driverId = "G" + driverIdx + "_Driver";
-            var driverNode = {
-                id: driverId,
-                kind: "SPUR",
-                gearType: "SPUR",
-                z: 8,
+            var prefix = "G" + (trainNodes.length + 1) + "_";
+            var driverId = prefix + "Driver";
+            var drivenId = prefix + "Driven";
+
+            var pairNodes = InvoluteMath.expandIntermittentPairToNodes({
                 m: mVal,
                 alphaDeg: aVal,
                 backlash: bVal,
-                shaftDiameter: sVal,
-                shaftType: "丸穴",
-                parentId: null,
-                relationType: "ROOT",
-                angleDeg: 0,
-                relativeAngleDeg: 0,
-                stageIndex: 1,
-                layerIndex: 1,
-                isMutilated: true,
-                intermittentRole: "DRIVER",
-                activeTeeth: 2,
-                tipRelief: false,
-                intermittentStructure: "coplanar",
-                blankRadiusType: "root",
-                x: 0
-            };
-            syncNodeProperties(driverNode);
-            trainNodes.push(driverNode);
-
-            var drivenIdx = trainNodes.length + 1;
-            var drivenId = "G" + drivenIdx + "_Driven";
-            var drivenNode = {
-                id: drivenId,
-                kind: "SPUR",
-                gearType: "SPUR",
-                z: 8,
-                m: mVal,
-                alphaDeg: aVal,
-                backlash: bVal,
-                shaftDiameter: sVal,
-                shaftType: "丸穴",
-                parentId: driverId,
-                relationType: "MESHING",
-                angleDeg: 0,
-                relativeAngleDeg: 0,
-                stageIndex: 1,
-                layerIndex: 1,
-                isMutilated: true,
-                intermittentRole: "DRIVEN",
+                shaftDiameter1: sVal,
+                shaftDiameter2: sVal,
+                driverId: driverId,
+                drivenId: drivenId,
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "MESHING" : "ROOT",
+                stageIndex: stageVal,
                 divisions: 4,
-                moveTeeth: 2,
-                lockClearance: 0.15,
-                intermittentStructure: "coplanar",
-                blankRadiusType: "root",
-                x: 0
-            };
-            syncNodeProperties(drivenNode);
-            trainNodes.push(drivenNode);
+                moveTeeth: 2
+            });
 
-            refreshTrainList(drivenId);
+            for (var pi = 0; pi < pairNodes.length; pi++) {
+                syncNodeProperties(pairNodes[pi]);
+                trainNodes.push(pairNodes[pi]);
+            }
+
+            refreshTrainList(driverId);
+            updatePreview();
+        };
+
+        btnAddPlanetary.onClick = function () {
+            var parentNode = getSelectedOrLastNode();
+            var nextStage = parentNode ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : 1;
+            var prefix = "PL" + (trainNodes.length + 1) + "_";
+
+            var zsVal = parseInt(etPlanetaryZs.text, 10) || 18;
+            var zpVal = parseInt(etPlanetaryZp.text, 10) || 18;
+            var zrVal = parseInt(etPlanetaryZr.text, 10) || (zsVal + 2 * zpVal);
+            var nVal = parseInt(etPlanetaryN.text, 10) || 3;
+            var mVal = parseFloat(etModule.text) || (parentNode ? parentNode.m : 2.0);
+            var aVal = parseFloat(etAlpha.text) || (parentNode ? parentNode.alphaDeg : 20.0);
+
+            var pNodes = InvoluteMath.expandPlanetaryToNodes({
+                m: mVal,
+                zs: zsVal,
+                zp: zpVal,
+                zr: zrVal,
+                numPlanets: nVal,
+                alphaDeg: aVal,
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "COAXIAL" : "ROOT",
+                stageIndex: nextStage,
+                idPrefix: prefix
+            });
+
+            for (var i = 0; i < pNodes.length; i++) {
+                syncNodeProperties(pNodes[i]);
+                trainNodes.push(pNodes[i]);
+            }
+
+            refreshTrainList(pNodes[0].id);
+            updatePreview();
+        };
+
+        btnAddParadox.onClick = function () {
+            var parentNode = getSelectedOrLastNode();
+            var nextStage = parentNode ? ((parseInt(parentNode.stageIndex, 10) || 1) + 1) : 1;
+            var prefix = "PDX" + (trainNodes.length + 1) + "_";
+
+            var zsVal = parseInt(etParadoxZs.text, 10) || 24;
+            var zpVal = parseInt(etParadoxZp.text, 10) || 18;
+            var zr1Val = parseInt(etParadoxZr1.text, 10) || (zsVal + 2 * zpVal);
+            var zr2Val = parseInt(etParadoxZr2.text, 10) || (zr1Val - 1);
+            var nVal = parseInt(etParadoxN.text, 10) || 3;
+            var mVal = parseFloat(etModule.text) || (parentNode ? parentNode.m : 2.0);
+            var aVal = parseFloat(etAlpha.text) || (parentNode ? parentNode.alphaDeg : 20.0);
+
+            var alpha = aVal * (Math.PI / 180.0);
+            var a = (mVal * (zsVal + zpVal)) / 2.0;
+            var a0_2 = (mVal * (zr2Val - zpVal)) / 2.0;
+            var cosAw2 = (a0_2 / a) * Math.cos(alpha);
+            var xr2Val = 0.0;
+            if (cosAw2 > 0.0 && cosAw2 <= 1.0) {
+                var aw2 = Math.acos(cosAw2);
+                var invAlpha = Math.tan(alpha) - alpha;
+                var invAw2 = Math.tan(aw2) - aw2;
+                xr2Val = (zr2Val - zpVal) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
+            }
+
+            var pdxNodes = InvoluteMath.expandParadoxicalToNodes({
+                m: mVal,
+                zs: zsVal,
+                zp: zpVal,
+                zr1: zr1Val,
+                zr2: zr2Val,
+                numPlanets: nVal,
+                alphaDeg: aVal,
+                xr2: xr2Val,
+                parentId: parentNode ? parentNode.id : null,
+                relationType: parentNode ? "COAXIAL" : "ROOT",
+                stageIndex: nextStage,
+                idPrefix: prefix
+            });
+
+            for (var i = 0; i < pdxNodes.length; i++) {
+                syncNodeProperties(pdxNodes[i]);
+                trainNodes.push(pdxNodes[i]);
+            }
+
+            refreshTrainList(pdxNodes[0].id);
             updatePreview();
         };
 
@@ -9381,19 +9628,54 @@ var DialogView = (function () {
             var zrVal = parseInt(etPlanetaryZr.text, 10) || (zsVal + 2 * zpVal);
             var nVal = parseInt(etPlanetaryN.text, 10) || 3;
 
-            trainNodes = InvoluteMath.expandPlanetaryToNodes({
-                m: mVal,
-                zs: zsVal,
-                zp: zpVal,
-                zr: zrVal,
-                numPlanets: nVal,
-                alphaDeg: aVal
-            });
+            var selParent = null;
+            if (trainNodes && trainNodes.length > 0) {
+                var candParent = getSelectedOrLastNode();
+                if (candParent) {
+                    var append = confirm("既存の輪列の選択ギア [" + candParent.id + "] に同軸接続して遊星歯車を追加しますか？\n\n[はい] : 既存輪列の途中に追加\n[いいえ] : 新規の独立輪列として置き換え");
+                    if (append) {
+                        selParent = candParent;
+                    }
+                }
+            }
 
-            ddMechanism.selection = 0;
-            switchMechanism(0);
-            refreshTrainList("S1");
-            updatePreview();
+            if (selParent) {
+                var nextStage = (parseInt(selParent.stageIndex, 10) || 1) + 1;
+                var prefix = "PL" + (trainNodes.length + 1) + "_";
+                var pNodes = InvoluteMath.expandPlanetaryToNodes({
+                    m: mVal,
+                    zs: zsVal,
+                    zp: zpVal,
+                    zr: zrVal,
+                    numPlanets: nVal,
+                    alphaDeg: aVal,
+                    parentId: selParent.id,
+                    relationType: "COAXIAL",
+                    stageIndex: nextStage,
+                    idPrefix: prefix
+                });
+                for (var i = 0; i < pNodes.length; i++) {
+                    syncNodeProperties(pNodes[i]);
+                    trainNodes.push(pNodes[i]);
+                }
+                ddMechanism.selection = 0;
+                switchMechanism(0);
+                refreshTrainList(pNodes[0].id);
+                updatePreview();
+            } else {
+                trainNodes = InvoluteMath.expandPlanetaryToNodes({
+                    m: mVal,
+                    zs: zsVal,
+                    zp: zpVal,
+                    zr: zrVal,
+                    numPlanets: nVal,
+                    alphaDeg: aVal
+                });
+                ddMechanism.selection = 0;
+                switchMechanism(0);
+                refreshTrainList("S1");
+                updatePreview();
+            }
         };
 
         ddPlanetaryCandidates.onChange = function () {
@@ -9486,21 +9768,58 @@ var DialogView = (function () {
                 xr2Val = (zr2Val - zpVal) * (invAw2 - invAlpha) / (2.0 * Math.tan(alpha));
             }
 
-            trainNodes = InvoluteMath.expandParadoxicalToNodes({
-                m: mVal,
-                zs: zsVal,
-                zp: zpVal,
-                zr1: zr1Val,
-                zr2: zr2Val,
-                numPlanets: nVal,
-                alphaDeg: aVal,
-                xr2: xr2Val
-            });
+            var selParent = null;
+            if (trainNodes && trainNodes.length > 0) {
+                var candParent = getSelectedOrLastNode();
+                if (candParent) {
+                    var append = confirm("既存の輪列の選択ギア [" + candParent.id + "] に同軸接続して不思議遊星歯車を追加しますか？\n\n[はい] : 既存輪列の途中に追加\n[いいえ] : 新規の独立輪列として置き換え");
+                    if (append) {
+                        selParent = candParent;
+                    }
+                }
+            }
 
-            ddMechanism.selection = 0;
-            switchMechanism(0);
-            refreshTrainList("S1");
-            updatePreview();
+            if (selParent) {
+                var nextStage = (parseInt(selParent.stageIndex, 10) || 1) + 1;
+                var prefix = "PDX" + (trainNodes.length + 1) + "_";
+                var pdxNodes = InvoluteMath.expandParadoxicalToNodes({
+                    m: mVal,
+                    zs: zsVal,
+                    zp: zpVal,
+                    zr1: zr1Val,
+                    zr2: zr2Val,
+                    numPlanets: nVal,
+                    alphaDeg: aVal,
+                    xr2: xr2Val,
+                    parentId: selParent.id,
+                    relationType: "COAXIAL",
+                    stageIndex: nextStage,
+                    idPrefix: prefix
+                });
+                for (var i = 0; i < pdxNodes.length; i++) {
+                    syncNodeProperties(pdxNodes[i]);
+                    trainNodes.push(pdxNodes[i]);
+                }
+                ddMechanism.selection = 0;
+                switchMechanism(0);
+                refreshTrainList(pdxNodes[0].id);
+                updatePreview();
+            } else {
+                trainNodes = InvoluteMath.expandParadoxicalToNodes({
+                    m: mVal,
+                    zs: zsVal,
+                    zp: zpVal,
+                    zr1: zr1Val,
+                    zr2: zr2Val,
+                    numPlanets: nVal,
+                    alphaDeg: aVal,
+                    xr2: xr2Val
+                });
+                ddMechanism.selection = 0;
+                switchMechanism(0);
+                refreshTrainList("S1");
+                updatePreview();
+            }
         };
 
         ddParadoxCandidates.onChange = function () {
@@ -10269,4 +10588,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.32');
+MainController.run('0.9.33');
