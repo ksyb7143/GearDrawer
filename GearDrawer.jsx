@@ -1,6 +1,6 @@
 ﻿/**
  * GearDrawer - Involute Spur Gear Generator for Adobe Illustrator
- * Version: 0.9.31
+ * Version: 0.9.32
  * Author: Pair-programmed with Antigravity AI
  * License: MIT
  * 
@@ -1993,10 +1993,17 @@ function logWarn(category, msg, data) {
 
         var outerNodes = [];
 
+        // 1. Left top corner of base / start of rack line
+        outerNodes.push({
+            anchor: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            leftDirection: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            rightDirection: [Math.round(leftX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            pointType: "CORNER"
+        });
+
         for (var k = 0; k < zRack; k++) {
             var cx = leftX + (k + 0.5) * pitch;
 
-            var pSpaceLeft = [cx - pitch / 2.0, -hf];
             var pFilletLeftStart = [cx - x_c, -hf];
             var pFilletLeftEnd = [cx - x_tan, y_tan];
 
@@ -2004,6 +2011,7 @@ function logWarn(category, msg, data) {
             var hLeftEnd = [pFilletLeftEnd[0] - kappa * sinA, pFilletLeftEnd[1] - kappa * cosA];
 
             var pTipLeft = [cx - x_tip, ha];
+            var pTipMid = [cx, ha];
             var pTipRight = [cx + x_tip, ha];
 
             var pFilletRightStart = [cx + x_tan, y_tan];
@@ -2011,17 +2019,7 @@ function logWarn(category, msg, data) {
             var hRightStart = [pFilletRightStart[0] + kappa * sinA, pFilletRightStart[1] - kappa * cosA];
             var hRightEnd = [pFilletRightEnd[0] - kappa, pFilletRightEnd[1]];
 
-            var pSpaceRight = [cx + pitch / 2.0, -hf];
-
-            // Space left
-            outerNodes.push({
-                anchor: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
-                leftDirection: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
-                rightDirection: [Math.round(pSpaceLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceLeft[1] * MM_TO_PT * 10000) / 10000],
-                pointType: "CORNER"
-            });
-
-            // Fillet left start
+            // 1. Fillet left start (Root flat to fillet arc - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pFilletLeftStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftStart[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(pFilletLeftStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftStart[1] * MM_TO_PT * 10000) / 10000],
@@ -2029,7 +2027,7 @@ function logWarn(category, msg, data) {
                 pointType: "SMOOTH"
             });
 
-            // Fillet left end
+            // 2. Fillet left end (Fillet arc to straight flank - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pFilletLeftEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletLeftEnd[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(hLeftEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(hLeftEnd[1] * MM_TO_PT * 10000) / 10000],
@@ -2037,7 +2035,7 @@ function logWarn(category, msg, data) {
                 pointType: "SMOOTH"
             });
 
-            // Tip Left
+            // 3. Tip Left Corner (Straight flank to tip flat - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pTipLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipLeft[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(pTipLeft[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipLeft[1] * MM_TO_PT * 10000) / 10000],
@@ -2045,7 +2043,15 @@ function logWarn(category, msg, data) {
                 pointType: "CORNER"
             });
 
-            // Tip Right
+            // 4. Tip Mid (Intersection with tooth symmetry axis x = cx - Blue circle)
+            outerNodes.push({
+                anchor: [Math.round(pTipMid[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipMid[1] * MM_TO_PT * 10000) / 10000],
+                leftDirection: [Math.round(pTipMid[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipMid[1] * MM_TO_PT * 10000) / 10000],
+                rightDirection: [Math.round(pTipMid[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipMid[1] * MM_TO_PT * 10000) / 10000],
+                pointType: "CORNER"
+            });
+
+            // 5. Tip Right Corner (Tip flat to straight flank - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pTipRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipRight[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(pTipRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pTipRight[1] * MM_TO_PT * 10000) / 10000],
@@ -2053,7 +2059,7 @@ function logWarn(category, msg, data) {
                 pointType: "CORNER"
             });
 
-            // Fillet right start
+            // 6. Fillet right start (Straight flank to fillet arc - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pFilletRightStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightStart[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(pFilletRightStart[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightStart[1] * MM_TO_PT * 10000) / 10000],
@@ -2061,22 +2067,22 @@ function logWarn(category, msg, data) {
                 pointType: "SMOOTH"
             });
 
-            // Fillet right end
+            // 7. Fillet right end (Fillet arc to root flat - Red circle)
             outerNodes.push({
                 anchor: [Math.round(pFilletRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightEnd[1] * MM_TO_PT * 10000) / 10000],
                 leftDirection: [Math.round(hRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(hRightEnd[1] * MM_TO_PT * 10000) / 10000],
                 rightDirection: [Math.round(pFilletRightEnd[0] * MM_TO_PT * 10000) / 10000, Math.round(pFilletRightEnd[1] * MM_TO_PT * 10000) / 10000],
                 pointType: "SMOOTH"
             });
-
-            // Space right
-            outerNodes.push({
-                anchor: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
-                leftDirection: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
-                rightDirection: [Math.round(pSpaceRight[0] * MM_TO_PT * 10000) / 10000, Math.round(pSpaceRight[1] * MM_TO_PT * 10000) / 10000],
-                pointType: "CORNER"
-            });
         }
+
+        // 8. Right top corner of base / end of rack line
+        outerNodes.push({
+            anchor: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            leftDirection: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            rightDirection: [Math.round(rightX * MM_TO_PT * 10000) / 10000, Math.round(-hf * MM_TO_PT * 10000) / 10000],
+            pointType: "CORNER"
+        });
 
         // Base rectangle bottom corners
         var y_base_mm = -(hf + backHeight);
@@ -2111,7 +2117,16 @@ function logWarn(category, msg, data) {
                 start: [Math.round(leftX * MM_TO_PT * 10000) / 10000, 0],
                 end: [Math.round(rightX * MM_TO_PT * 10000) / 10000, 0]
             },
-            outerNodes: outerNodes
+            outerNodes: outerNodes,
+            singleToothNodes: [
+                { anchor: [-x_c, -hf], leftDirection: [-x_c, -hf], rightDirection: [-x_c + kappa, -hf], pointType: "SMOOTH" },
+                { anchor: [-x_tan, y_tan], leftDirection: [-x_tan - kappa * sinA, y_tan - kappa * cosA], rightDirection: [-x_tan, y_tan], pointType: "SMOOTH" },
+                { anchor: [-x_tip, ha], leftDirection: [-x_tip, ha], rightDirection: [-x_tip, ha], pointType: "CORNER" },
+                { anchor: [0, ha], leftDirection: [0, ha], rightDirection: [0, ha], pointType: "CORNER" },
+                { anchor: [x_tip, ha], leftDirection: [x_tip, ha], rightDirection: [x_tip, ha], pointType: "CORNER" },
+                { anchor: [x_tan, y_tan], leftDirection: [x_tan, y_tan], rightDirection: [x_tan + kappa * sinA, y_tan - kappa * cosA], pointType: "SMOOTH" },
+                { anchor: [x_c, -hf], leftDirection: [x_c - kappa, -hf], rightDirection: [x_c, -hf], pointType: "SMOOTH" }
+            ]
         };
 
         logTrace("RACK", "Calculated rack dimensions", {
@@ -2378,9 +2393,10 @@ function logWarn(category, msg, data) {
         var segR1 = fitBezierSegment(pTipR, pMidR, getInvolutePoint((ra + rMid) / 2.0));
         var segR2 = fitBezierSegment(pMidR, pJuncR, getInvolutePoint((rMid + pJuncR.r) / 2.0));
 
-        // Tip arc control handle length
+        // Tip arc control handle length (split in half with midpoint anchor on symmetry axis)
         var dThTip = 2.0 * pTipR.theta;
-        var L_tip = (4.0 / 3.0) * ra * Math.tan(dThTip / 4.0);
+        var halfDThTip = pTipR.theta;
+        var L_halfTip = (4.0 / 3.0) * ra * Math.tan(halfDThTip / 4.0);
 
         // Root space arc control handle length (dynamic check)
         var dThSpace = toothPitch - 2.0 * cAngle;
@@ -2440,11 +2456,11 @@ function logWarn(category, msg, data) {
                 pointType: "SMOOTH"
             });
 
-            // 4. Left Tip Node (at angle -th_a)
+            // 4. Left Tip Corner Node (at angle -th_a - Red circle)
             var p_lt = [pTipR.x, -pTipR.y];
             var in_h_lt = [segR1.P1.x, -segR1.P1.y];
             var tangent_lt = [Math.sin(pTipR.theta), Math.cos(pTipR.theta)];
-            var out_h_lt = [p_lt[0] + L_tip * tangent_lt[0], p_lt[1] + L_tip * tangent_lt[1]];
+            var out_h_lt = [p_lt[0] + L_halfTip * tangent_lt[0], p_lt[1] + L_halfTip * tangent_lt[1]];
 
             innerContourNodes.push({
                 anchor: rot(p_lt),
@@ -2453,10 +2469,21 @@ function logWarn(category, msg, data) {
                 pointType: "CORNER"
             });
 
-            // 5. Right Tip Node (at angle +th_a)
+            // 5. Mid Tip Node (on tooth symmetry axis theta = 0 - Blue circle)
+            var p_mt = [ra, 0.0];
+            var in_h_mt = [ra, -L_halfTip];
+            var out_h_mt = [ra, L_halfTip];
+
+            innerContourNodes.push({
+                anchor: rot(p_mt),
+                leftDirection: rot(in_h_mt),
+                rightDirection: rot(out_h_mt),
+                pointType: "SMOOTH"
+            });
+
+            // 6. Right Tip Corner Node (at angle +th_a - Red circle)
             var p_rt = [pTipR.x, pTipR.y];
-            var tangent_rt = [-Math.sin(pTipR.theta), Math.cos(pTipR.theta)];
-            var in_h_rt = [p_rt[0] - L_tip * tangent_rt[0], p_rt[1] - L_tip * tangent_rt[1]];
+            var in_h_rt = [p_rt[0] + L_halfTip * Math.sin(pTipR.theta), p_rt[1] - L_halfTip * Math.cos(pTipR.theta)];
             var out_h_rt = [segR1.P1.x, segR1.P1.y];
 
             innerContourNodes.push({
@@ -2558,7 +2585,20 @@ function logWarn(category, msg, data) {
             rRimPt: rRimPt,
             isUndercut: isUndercut,
             innerContourNodes: innerContourNodes,
-            rimCircleNodes: rimCircleNodes
+            rimCircleNodes: rimCircleNodes,
+            singleToothNodes: (function() {
+                var stn = [];
+                stn.push({ anchor: [pRootR.x, -pRootR.y], leftDirection: [pRootR.x - L_space * Math.sin(cAngle), -pRootR.y - L_space * Math.cos(cAngle)], rightDirection: (filP2 ? [filP2.x, -filP2.y] : [segR2.P2.x, -segR2.P2.y]), pointType: hasFlatSpace ? "SMOOTH" : "CORNER" });
+                if (filP1) stn.push({ anchor: [pJuncR.x, -pJuncR.y], leftDirection: [filP1.x, -filP1.y], rightDirection: [segR2.P2.x, -segR2.P2.y], pointType: "SMOOTH" });
+                stn.push({ anchor: [pMidR.x, -pMidR.y], leftDirection: [segR2.P1.x, -segR2.P1.y], rightDirection: [segR1.P2.x, -segR1.P2.y], pointType: "SMOOTH" });
+                stn.push({ anchor: [pTipR.x, -pTipR.y], leftDirection: [segR1.P1.x, -segR1.P1.y], rightDirection: [pTipR.x + L_halfTip * Math.sin(pTipR.theta), -pTipR.y + L_halfTip * Math.cos(pTipR.theta)], pointType: "CORNER" });
+                stn.push({ anchor: [ra, 0.0], leftDirection: [ra, -L_halfTip], rightDirection: [ra, L_halfTip], pointType: "SMOOTH" });
+                stn.push({ anchor: [pTipR.x, pTipR.y], leftDirection: [pTipR.x + L_halfTip * Math.sin(pTipR.theta), pTipR.y - L_halfTip * Math.cos(pTipR.theta)], rightDirection: [segR1.P1.x, segR1.P1.y], pointType: "CORNER" });
+                stn.push({ anchor: [pMidR.x, pMidR.y], leftDirection: [segR1.P2.x, segR1.P2.y], rightDirection: [segR2.P1.x, segR2.P1.y], pointType: "SMOOTH" });
+                if (filP1) stn.push({ anchor: [pJuncR.x, pJuncR.y], leftDirection: [segR2.P2.x, segR2.P2.y], rightDirection: [filP1.x, filP1.y], pointType: "SMOOTH" });
+                stn.push({ anchor: [pRootR.x, pRootR.y], leftDirection: (filP2 ? [filP2.x, filP2.y] : [segR2.P2.x, segR2.P2.y]), rightDirection: [pRootR.x - L_space * Math.sin(cAngle), pRootR.y + L_space * Math.cos(cAngle)], pointType: hasFlatSpace ? "SMOOTH" : "CORNER" });
+                return stn;
+            })()
         };
     }
 
@@ -10229,4 +10269,4 @@ var MainController = (function () {
     };
 })();
 
-MainController.run('0.9.31');
+MainController.run('0.9.32');
