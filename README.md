@@ -1,3 +1,7 @@
+---
+created: 261021 Wed  11:05
+updated: 261126 Thu  10:50
+---
 # GearDrawer
 
 Adobe Illustrator 上で動作する、レーザーカッター・CNC切削・3Dプリント向けの実動インボリュート歯車自動作図スクリプト (ExtendScript / JSX)。
@@ -33,7 +37,6 @@ JIS B 1701-1 / JIS B 0003 / JIS B 1301 に準拠した厳密な歯形幾何計�
 ## 同梱ファイル
 
 - `GearDrawer.jsx` : メインスクリプト (Illustrator から直接実行)
-- `GearDrawer_Tester.jsx` : Illustrator 実機向け自動検証テストランナー
 
 ## 使い方
 
