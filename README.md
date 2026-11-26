@@ -1,3 +1,8 @@
+**!!! CAUTION !!!**
+
+このプラグインは、AIによるコーディングで作成されています。
+
+
 # GearDrawer
 
 Adobe Illustrator 上で動作する、レーザーカッター・CNC切削・3Dプリント向けの実動インボリュート歯車自動作図スクリプト (ExtendScript / JSX)。
