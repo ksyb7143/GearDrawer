@@ -1,4 +1,6 @@
-# Test execution report
+# Logs & Test outputs
+*.log
+GearDrawer_Log_*.txt
 test_report.json
 
 # OS generated files
